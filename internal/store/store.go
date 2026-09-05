@@ -36,6 +36,11 @@ const (
 		WHEN e.input_tokens=0 AND e.output_tokens=0 AND e.total_tokens>0 THEN 1
 		WHEN e.total_tokens=0 AND e.input_tokens+e.output_tokens>0 THEN 2
 		ELSE 0 END`
+	// cumulative_reset was emitted by older scanners when a new Codex turn
+	// restarted its cumulative counter. The recorded last_token_usage was
+	// already accounted for, so those rows are retained only as historical
+	// diagnostics and must not keep the Dashboard in an actionable red state.
+	actionableWarningSQL = `kind<>'cumulative_reset'`
 )
 
 type Store struct {
@@ -937,7 +942,7 @@ func (s *Store) Warnings(ctx context.Context, limit int) ([]model.Warning, error
 		limit = 100
 	}
 	rows, err := s.reader().QueryContext(ctx, `SELECT id,created_at,first_seen,occurrences,kind,path,detail
-		FROM warnings ORDER BY created_at DESC,id DESC LIMIT ?`, limit)
+		FROM warnings WHERE `+actionableWarningSQL+` ORDER BY created_at DESC,id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -955,6 +960,15 @@ func (s *Store) Warnings(ctx context.Context, limit int) ([]model.Warning, error
 		out = append(out, item)
 	}
 	return out, rows.Err()
+}
+
+// ClearResolvedFileWarnings removes file-change warnings after a later scan
+// has successfully reconciled the same path. It never clears parser, timestamp,
+// or malformed-record warnings that may still describe an accounting gap.
+func (s *Store) ClearResolvedFileWarnings(ctx context.Context, path string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM warnings
+		WHERE path=? AND kind IN ('rollout_rewritten','rollout_truncated')`, path)
+	return err
 }
 
 func (s *Store) UpdateScanState(ctx context.Context, home, stateDB string, files int64, warning string) error {
@@ -989,7 +1003,7 @@ func (s *Store) Summary(ctx context.Context, filter model.Filter) (model.Summary
 	out.LastEvent = timeFromUnix(last)
 	out.GrandTotal = out.Usage.Total
 	var warnings int64
-	_ = s.reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM warnings`).Scan(&warnings)
+	_ = s.reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM warnings WHERE `+actionableWarningSQL).Scan(&warnings)
 	out.CoverageIncomplete = warnings > 0
 	return out, nil
 }
@@ -1463,7 +1477,7 @@ func (s *Store) Status(ctx context.Context) (Status, error) {
 	if err := reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions`).Scan(&out.SessionCount); err != nil {
 		return out, err
 	}
-	if err := reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM warnings`).Scan(&out.WarningCount); err != nil {
+	if err := reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM warnings WHERE `+actionableWarningSQL).Scan(&out.WarningCount); err != nil {
 		return out, err
 	}
 	var scan int64

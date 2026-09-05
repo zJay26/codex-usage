@@ -86,7 +86,7 @@ function costEstimate(url) {
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://127.0.0.1:${port}`);
   if (url.pathname === "/api/v1/status") return json(response, {
-    version: "2.3.5-preview", scanning: false,
+    version: "2.3.7-preview", scanning: false,
     status: {
       machine: { id: "62c0172d-36c4-4ec9-a074-02b9ec2b45e1", label: "WORKSTATION-19 · windows", hostname: "WORKSTATION-19", os: "windows", arch: "amd64" },
       last_scan: now.toISOString(), accounting_mode: "jsonl_only", otel_active: false,
@@ -172,7 +172,7 @@ const server = http.createServer(async (request, response) => {
   }
   if (url.pathname === "/api/v1/warnings") return json(response, { items: [
     { created_at: now.toISOString(), kind: "fork_replay_detected", path: "rollout-fork.jsonl", detail: "检测到复制的父线程历史前缀，已跳过并重建派生索引" },
-    { created_at: now.toISOString(), kind: "cumulative_reset", path: "rollout-example.jsonl", detail: "累计向量回退，已使用 last_token_usage 补位" }
+    { created_at: now.toISOString(), kind: "cumulative_gap_fallback", path: "rollout-example.jsonl", detail: "累计边界无法完整核对，已使用 last_token_usage 保守补位" }
   ] });
   if (url.pathname === "/api/v1/rescan") return json(response, { homes: 1, files: 26, records: 940, events_inserted: 2, duplicates: 14, warnings: 0 });
   if (url.pathname === "/api/v1/export") {

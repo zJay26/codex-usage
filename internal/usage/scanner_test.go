@@ -81,12 +81,23 @@ func TestScannerCumulativeDedupeModelSwitchResetAndPartialAppend(t *testing.T) {
 		}
 	}
 	warnings, _ := st.Warnings(context.Background(), 20)
-	foundReset := false
 	for _, warning := range warnings {
-		foundReset = foundReset || warning.Kind == "cumulative_reset"
+		if warning.Kind == "cumulative_reset" || warning.Kind == "cumulative_gap_fallback" {
+			t.Fatalf("exact new-turn reset was incorrectly reported: %+v", warnings)
+		}
 	}
-	if !foundReset {
-		t.Fatal("cumulative reset was not made visible")
+	events, err := st.Events(context.Background(), store.EventQuery{Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundExactReset := false
+	for _, event := range events {
+		if event.Usage.Total == 25 && event.Confidence == model.ConfidenceExact {
+			foundExactReset = true
+		}
+	}
+	if !foundExactReset {
+		t.Fatalf("exact new-turn increment was not retained: %+v", events)
 	}
 
 	completion := `{"total_token_usage":{"input_tokens":40,"cached_input_tokens":4,"cache_write_input_tokens":2,"output_tokens":10,"reasoning_output_tokens":2,"total_tokens":50},"last_token_usage":{"input_tokens":20,"cached_input_tokens":2,"cache_write_input_tokens":1,"output_tokens":5,"reasoning_output_tokens":1,"total_tokens":25}}` + "}}\n"
@@ -109,6 +120,90 @@ func TestScannerCumulativeDedupeModelSwitchResetAndPartialAppend(t *testing.T) {
 	summary, _ = st.Summary(context.Background(), model.Filter{})
 	if summary.Usage.Total != 250 {
 		t.Fatalf("want 250 after append, got %d", summary.Usage.Total)
+	}
+}
+
+func TestScannerKeepsUnverifiableCumulativeFallbackActionable(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, ".codex")
+	sessionDir := filepath.Join(home, "sessions", "2026", "09", "05")
+	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(sessionDir, "rollout-gap.jsonl")
+	content := strings.Join([]string{
+		`{"timestamp":"2026-09-05T01:00:00Z","type":"session_meta","payload":{"id":"session-gap","cwd":"/project","originator":"codex_cli_rs"}}`,
+		`{"timestamp":"2026-09-05T01:00:01Z","type":"turn_context","payload":{"turn_id":"turn-1","cwd":"/project","model":"gpt-5.6-sol"}}`,
+		tokenLine("2026-09-05T01:00:02Z", usage(80, 10, 0, 20, 2, 100), usage(80, 10, 0, 20, 2, 100)),
+		tokenLine("2026-09-05T01:00:03Z", usage(32, 4, 0, 8, 1, 40), usage(20, 2, 0, 5, 1, 25)),
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(filepath.Join(root, "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	scanner := &Scanner{Store: st}
+	result, err := scanner.Scan(context.Background(), []string{home}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.EventsInserted != 2 || result.Warnings != 1 {
+		t.Fatalf("unexpected fallback scan result: %+v", result)
+	}
+	summary, err := st.Summary(context.Background(), model.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Usage.Total != 125 || !summary.CoverageIncomplete {
+		t.Fatalf("unverifiable fallback was not retained visibly: %+v", summary)
+	}
+	warnings, err := st.Warnings(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 1 || warnings[0].Kind != "cumulative_gap_fallback" {
+		t.Fatalf("unexpected actionable warnings: %+v", warnings)
+	}
+}
+
+func TestSuccessfulScanClearsResolvedFileChangeWarning(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, ".codex")
+	sessionDir := filepath.Join(home, "sessions", "2026", "09", "05")
+	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(sessionDir, "rollout-recovered.jsonl")
+	content := strings.Join([]string{
+		`{"timestamp":"2026-09-05T02:00:00Z","type":"session_meta","payload":{"id":"session-recovered","cwd":"/project","originator":"codex_cli_rs"}}`,
+		tokenLine("2026-09-05T02:00:01Z", usage(80, 10, 0, 20, 2, 100), usage(80, 10, 0, 20, 2, 100)),
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(filepath.Join(root, "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	scanner := &Scanner{Store: st}
+	if _, err := scanner.Scan(context.Background(), []string{home}, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddWarning(context.Background(), "rollout_rewritten", path, "historical warning"); err != nil {
+		t.Fatal(err)
+	}
+	if status, err := st.Status(context.Background()); err != nil || status.WarningCount != 1 {
+		t.Fatalf("warning setup failed: status=%+v err=%v", status, err)
+	}
+	if _, err := scanner.Scan(context.Background(), []string{home}, false); err != nil {
+		t.Fatal(err)
+	}
+	if warnings, err := st.Warnings(context.Background(), 10); err != nil || len(warnings) != 0 {
+		t.Fatalf("resolved warning remained visible: warnings=%+v err=%v", warnings, err)
 	}
 }
 

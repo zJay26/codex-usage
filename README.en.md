@@ -131,7 +131,7 @@ The Codex state database is used only to discover rollout paths and enrich title
 
 Every scan unions paths from the state database with `sessions/` and `archived_sessions/`, so a missing state row cannot hide a JSONL file. Ordinary Windows paths and `\\?\` extended paths normalize to one file. Truncation, a rewrite inside the scanned range, a newly completed fork-replay boundary, or a parser upgrade preserves the current statistics and requests a rebuild. Derived indexes are cleared only after confirmation in the Dashboard or an explicit `codex-usage scan --rebuild`, then rebuilt from the JSONL files that still exist. Data from deleted JSONL files may no longer be recoverable at that point.
 
-Each event stores its local date and hour at ingestion, so changing the system timezone later does not move existing history at query time. Repeated data-quality records are grouped by kind and local path; cumulative resets, malformed records, invalid timestamps, and rebuild requests remain visible.
+Each event stores its local date and hour at ingestion, so changing the system timezone later does not move existing history at query time. Newer Codex writers restart cumulative values at the beginning of a new turn; when that value exactly matches `last_token_usage`, the scanner treats it as an exact increment instead of a data-quality warning. Cumulative boundaries that cannot be fully verified, malformed records, invalid timestamps, and pending rebuilds remain visible. Stale file-rewrite or truncation warnings are removed after a later scan proves that the path has recovered.
 
 ### Local service
 

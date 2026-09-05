@@ -230,7 +230,7 @@
     const endpoint = url.pathname.slice(url.pathname.indexOf("/api/v1/"));
     const method = String(init.method || (typeof input !== "string" && input.method) || "GET").toUpperCase();
     if (endpoint === "/api/v1/status") return jsonResponse({
-      version: "2.3.5-demo", scanning: false,
+      version: "2.3.7-demo", scanning: false,
       status: {
         machine: { id: "synthetic-machine", label: "Synthetic Windows · demo", hostname: "synthetic-host", os: "windows", arch: "amd64" },
         last_scan: now.toISOString(), accounting_mode: "jsonl_only", otel_active: false,
@@ -264,7 +264,7 @@
     }
     if (endpoint === "/api/v1/warnings") return jsonResponse({ items: [
       { created_at: now.toISOString(), first_seen: new Date(now.getTime() - 86_400_000).toISOString(), occurrences: 1, kind: "fork_replay_detected", path: "synthetic://rollout", detail: "Synthetic copied parent history was skipped and the JSONL index was rebuilt." },
-      { created_at: now.toISOString(), occurrences: 1, kind: "cumulative_reset", path: "synthetic://rollout", detail: "Synthetic cumulative vector moved backward; last_token_usage filled the delta." }
+      { created_at: now.toISOString(), occurrences: 1, kind: "cumulative_gap_fallback", path: "synthetic://rollout", detail: "Synthetic cumulative boundary could not be fully verified; last_token_usage conservatively filled the delta." }
     ] });
     if (endpoint === "/api/v1/pricing" && method === "GET") return jsonResponse(pricingPayload());
     if (endpoint === "/api/v1/pricing/overrides" && method === "PUT") {
