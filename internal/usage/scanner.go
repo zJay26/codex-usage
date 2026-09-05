@@ -210,6 +210,9 @@ func (s *Scanner) scanFile(ctx context.Context, home, path string, meta model.Se
 		if cursor.Offset >= info.Size() && cursor.Size == info.Size() &&
 			!pendingForkReplay &&
 			cursor.ModifiedNanos == info.ModTime().UnixNano() {
+			if err := s.Store.ClearResolvedFileWarnings(ctx, path); err != nil {
+				return result, err
+			}
 			return result, nil
 		}
 		switch {
@@ -382,6 +385,9 @@ func (s *Scanner) scanFile(ctx context.Context, home, path string, meta model.Se
 			return result, err
 		}
 	}
+	if err := s.Store.ClearResolvedFileWarnings(ctx, path); err != nil {
+		return result, err
+	}
 	return result, nil
 }
 
@@ -551,6 +557,7 @@ func (s *Scanner) processRecord(
 		if err := json.Unmarshal(payload.Info, &info); err != nil {
 			return err
 		}
+		rawCurrent := info.Total.usage()
 		current := info.Total.withMissingSubsets(cursor.Cumulative)
 		if current.IsZero() {
 			return nil
@@ -600,10 +607,20 @@ func (s *Scanner) processRecord(
 				}
 				cursor.Segment++
 				delta = last
-				confidence = model.ConfidenceGapFallback
-				_ = s.Store.AddWarning(ctx, "cumulative_reset", path,
-					fmt.Sprintf("offset=%d previous=(%s) current=(%s)，使用 last_token_usage 补位", offset, cursor.Cumulative, current))
-				result.Warnings++
+				if rawCurrent.Equal(last) {
+					// Modern Codex JSONL restarts total_token_usage at each new
+					// turn while thread_token_usage remains session-wide. When the
+					// restarted total exactly equals last_token_usage, the complete
+					// increment is known and remains exact rather than a data gap.
+					current = rawCurrent
+					cursor.InheritedBaseline = false
+				} else {
+					confidence = model.ConfidenceGapFallback
+					_ = s.Store.AddWarning(ctx, "cumulative_gap_fallback", path,
+						fmt.Sprintf("offset=%d previous=(%s) current=(%s) last=(%s)，累计边界无法完整核对，使用 last_token_usage 保守补位",
+							offset, cursor.Cumulative, current, last))
+					result.Warnings++
+				}
 			}
 		}
 		if delta.IsZero() {

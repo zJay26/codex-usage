@@ -399,7 +399,7 @@ func TestWarningsAreGroupedByKindAndPath(t *testing.T) {
 	}
 	defer st.Close()
 	for _, detail := range []string{"第一次", "第二次", "第三次"} {
-		if err := st.AddWarning(ctx, "cumulative_reset", "same.jsonl", detail); err != nil {
+		if err := st.AddWarning(ctx, "jsonl_record", "same.jsonl", detail); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -416,6 +416,46 @@ func TestWarningsAreGroupedByKindAndPath(t *testing.T) {
 	}
 	if status.WarningCount != 1 || status.AccountingMode != "jsonl_only" {
 		t.Fatalf("unexpected status: %+v", status)
+	}
+}
+
+func TestLegacyCumulativeResetWarningsAreHistorical(t *testing.T) {
+	ctx := context.Background()
+	st, err := Open(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.AddWarning(ctx, "cumulative_reset", "legacy.jsonl", "already accounted with last_token_usage"); err != nil {
+		t.Fatal(err)
+	}
+	warnings, err := st.Warnings(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("legacy informational warning remained actionable: %+v", warnings)
+	}
+	status, err := st.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.WarningCount != 0 {
+		t.Fatalf("legacy informational warning kept the red status active: %+v", status)
+	}
+	summary, err := st.Summary(ctx, model.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.CoverageIncomplete {
+		t.Fatalf("legacy informational warning marked coverage incomplete: %+v", summary)
+	}
+	var retained int
+	if err := st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM warnings WHERE kind='cumulative_reset'`).Scan(&retained); err != nil {
+		t.Fatal(err)
+	}
+	if retained != 1 {
+		t.Fatalf("legacy audit row was deleted: %d", retained)
 	}
 }
 
