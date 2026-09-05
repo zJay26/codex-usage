@@ -20,6 +20,7 @@ const agents = [
 ];
 let pricingOverrides = {};
 const catalog = [
+  { model: "gpt-6-astra", display_name: "GPT-6 Astra", input_usd_per_million: "10.00", cached_input_usd_per_million: "1.00", cache_write_input_usd_per_million: "12.50", output_usd_per_million: "50.00", source: "https://developers.openai.com/api/docs/models/gpt-6-astra" },
   { model: "gpt-5.6-sol", display_name: "GPT-5.6 Sol", input_usd_per_million: "5.00", cached_input_usd_per_million: "0.50", cache_write_input_usd_per_million: "6.25", output_usd_per_million: "30.00", source: "https://developers.openai.com/api/docs/models/gpt-5.6-sol" },
   { model: "gpt-5.6-terra", display_name: "GPT-5.6 Terra", input_usd_per_million: "2.00", cached_input_usd_per_million: "0.20", cache_write_input_usd_per_million: "2.50", output_usd_per_million: "12.00", source: "https://developers.openai.com/api/docs/models/gpt-5.6-terra" },
   { model: "gpt-5.6-luna", display_name: "GPT-5.6 Luna", input_usd_per_million: "0.20", cached_input_usd_per_million: "0.02", cache_write_input_usd_per_million: "0.25", output_usd_per_million: "1.20", source: "https://developers.openai.com/api/docs/models/gpt-5.6-luna" },
@@ -73,7 +74,7 @@ function costEstimate(url) {
   const totalCost = points.reduce((sum, point) => sum + Number(point.estimate.usd), 0);
   const estimate = { usd: totalCost.toFixed(9), regular_input_usd: totalCost.toFixed(9), cached_input_usd: "0.000000000", cache_write_input_usd: "0.000000000", output_usd: "0.000000000", priced_tokens: pricedTokens, unpriced_tokens: unpricedTokens, coverage_ratio: pricedTokens + unpricedTokens ? pricedTokens / (pricedTokens + unpricedTokens) : 0, reasons: unpricedTokens ? [{ kind: "unknown_model", model: "codex-auto-review", tokens: unpricedTokens, detail: "没有公开 API 单价或本机定价覆写" }] : [] };
   return {
-    basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-08-04", bucket: "day", summary: estimate, points,
+    basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-09-05", bucket: "day", summary: estimate, points,
     models: [
       { key: "gpt-5.4", usage: { ...totalUsage, total: Math.round(totalUsage.total * .63) }, estimate: { ...estimate, usd: (totalCost * .71).toFixed(9), priced_tokens: Math.round(totalUsage.total * .63), unpriced_tokens: 0, coverage_ratio: 1, reasons: [] } },
       { key: "gpt-5.6-terra", usage: { ...totalUsage, total: Math.round(totalUsage.total * .26) }, estimate: { ...estimate, usd: (totalCost * .25).toFixed(9), priced_tokens: Math.round(totalUsage.total * .26), unpriced_tokens: 0, coverage_ratio: 1, reasons: [] } },
@@ -101,7 +102,7 @@ const server = http.createServer(async (request, response) => {
   }
   if (url.pathname === "/api/v1/cost-estimate") return json(response, costEstimate(url));
   if (url.pathname === "/api/v1/pricing" && request.method === "GET") return json(response, {
-    basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-08-04", catalog, overrides: pricingOverrides,
+    basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-09-05", catalog, overrides: pricingOverrides,
     unpriced_models: pricingOverrides["codex-auto-review"] ? [] : [{ key: "codex-auto-review", usage: { ...usage, total: 438_000 }, events: 9, sessions: 3 }]
   });
   if (url.pathname === "/api/v1/pricing/overrides" && request.method === "PUT") {
@@ -109,7 +110,7 @@ const server = http.createServer(async (request, response) => {
     for await (const chunk of request) body += chunk;
     try {
       pricingOverrides = JSON.parse(body).overrides || {};
-      return json(response, { basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-08-04", catalog, overrides: pricingOverrides, unpriced_models: pricingOverrides["codex-auto-review"] ? [] : [{ key: "codex-auto-review", usage: { ...usage, total: 438_000 }, events: 9, sessions: 3 }] });
+      return json(response, { basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-09-05", catalog, overrides: pricingOverrides, unpriced_models: pricingOverrides["codex-auto-review"] ? [] : [{ key: "codex-auto-review", usage: { ...usage, total: 438_000 }, events: 9, sessions: 3 }] });
     } catch {
       return json(response, { error: "无效请求体" }, 400);
     }

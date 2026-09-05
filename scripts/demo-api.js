@@ -14,6 +14,7 @@
     total: 10_170_000
   };
   const catalog = [
+    { model: "gpt-6-astra", display_name: "GPT-6 Astra", input_usd_per_million: "10.00", cached_input_usd_per_million: "1.00", cache_write_input_usd_per_million: "12.50", output_usd_per_million: "50.00", source: "#synthetic-pricing" },
     { model: "gpt-5.6-sol", display_name: "GPT-5.6 Sol", input_usd_per_million: "5.00", cached_input_usd_per_million: "0.50", cache_write_input_usd_per_million: "6.25", output_usd_per_million: "30.00", source: "#synthetic-pricing" },
     { model: "gpt-5.6-terra", display_name: "GPT-5.6 Terra", input_usd_per_million: "2.00", cached_input_usd_per_million: "0.20", cache_write_input_usd_per_million: "2.50", output_usd_per_million: "12.00", source: "#synthetic-pricing" },
     { model: "gpt-5.4", display_name: "GPT-5.4", input_usd_per_million: "2.50", cached_input_usd_per_million: "0.25", output_usd_per_million: "15.00", source: "#synthetic-pricing" }
@@ -166,7 +167,7 @@
       reasons: unpricedTokens ? [{ kind: "unknown_model", model: "codex-auto-review", tokens: unpricedTokens, detail: "Synthetic model has no public API rate or local override." }] : []
     };
     return {
-      basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-08-04", bucket: "day", summary: estimate, points,
+      basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-09-05", bucket: "day", summary: estimate, points,
       models: models.map((item) => {
         const itemUsage = scaledUsage(usage, item.share);
         const unknown = item.key === "codex-auto-review" && !pricingOverrides[item.key];
@@ -215,7 +216,7 @@
     return {
       basis: "current_standard_api_text_token_prices",
       currency: "USD",
-      catalog_as_of: "2026-08-04",
+      catalog_as_of: "2026-09-05",
       catalog,
       overrides: pricingOverrides,
       unpriced_models: pricingOverrides["codex-auto-review"] ? [] : [{ key: "codex-auto-review", usage: scaledUsage(baseUsage, .12), events: 9, sessions: 3 }]
