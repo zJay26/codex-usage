@@ -2,6 +2,22 @@ package pricing
 
 import "testing"
 
+func TestResolveGPT6AstraPricing(t *testing.T) {
+	rate, ok, err := Resolve("gpt-6-astra", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected GPT-6 Astra to resolve")
+	}
+	if rate.CanonicalModel != "gpt-6-astra" || rate.InputNanoPerToken != 10000 || rate.CachedNanoPerToken != 1000 || rate.OutputNanoPerToken != 50000 {
+		t.Fatalf("unexpected GPT-6 Astra rate: %#v", rate)
+	}
+	if rate.CacheWriteNanoPerToken == nil || *rate.CacheWriteNanoPerToken != 12500 {
+		t.Fatalf("unexpected GPT-6 Astra cache-write rate: %#v", rate.CacheWriteNanoPerToken)
+	}
+}
+
 func TestResolveBuiltInAndVersionedSnapshot(t *testing.T) {
 	rate, ok, err := Resolve("gpt-5.6-sol-2026-07-15", nil)
 	if err != nil {

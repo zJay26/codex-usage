@@ -8,6 +8,28 @@ import (
 	"github.com/zJay26/codex-usage/internal/model"
 )
 
+func TestEvaluateGPT6AstraEventUsesPublishedRates(t *testing.T) {
+	event := model.UsageEvent{
+		Model: "gpt-6-astra", Confidence: model.ConfidenceExact,
+		Usage: model.TokenUsage{Input: 1000, CachedInput: 200, CacheWriteInput: 100, Output: 100, Total: 1100},
+	}
+	evaluated, err := evaluateEvent(event, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aggregate := aggregate{}
+	if err := aggregate.add(evaluated); err != nil {
+		t.Fatal(err)
+	}
+	estimate := aggregate.estimate()
+	if estimate.USD != "0.013450000" || estimate.RegularInputUSD != "0.007000000" || estimate.CachedInputUSD != "0.000200000" || estimate.CacheWriteInputUSD != "0.001250000" || estimate.OutputUSD != "0.005000000" {
+		t.Fatalf("unexpected GPT-6 Astra estimate: %#v", estimate)
+	}
+	if estimate.PricedTokens != 1100 || estimate.UnpricedTokens != 0 || estimate.CoverageRatio != 1 {
+		t.Fatalf("unexpected GPT-6 Astra coverage: %#v", estimate)
+	}
+}
+
 func TestEvaluateEventSeparatesOverlappingTokenCategories(t *testing.T) {
 	event := model.UsageEvent{
 		Model: "gpt-5.6-sol", Confidence: model.ConfidenceExact,

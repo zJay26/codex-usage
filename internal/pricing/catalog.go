@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	CatalogAsOf = "2026-08-04"
+	CatalogAsOf = "2026-09-05"
 	Currency    = "USD"
 	Basis       = "current_standard_api_text_token_prices"
 )
@@ -45,6 +45,13 @@ type ResolvedRate struct {
 }
 
 var builtInCatalog = []CatalogEntry{
+	{
+		Model: "gpt-6-astra", DisplayName: "GPT-6 Astra",
+		SnapshotPatterns:   []string{"gpt-6-astra-YYYY-MM-DD"},
+		InputUSDPerMillion: "10.00", CachedInputUSDPerMillion: "1.00",
+		CacheWriteInputUSDPerMillion: "12.50", OutputUSDPerMillion: "50.00",
+		Source: "https://developers.openai.com/api/docs/models/gpt-6-astra",
+	},
 	{
 		Model: "gpt-5.6-sol", DisplayName: "GPT-5.6 Sol", Aliases: []string{"gpt-5.6"},
 		SnapshotPatterns:   []string{"gpt-5.6-sol-YYYY-MM-DD", "gpt-5.6-YYYY-MM-DD"},
