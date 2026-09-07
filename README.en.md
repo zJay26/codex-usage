@@ -67,7 +67,7 @@ On a headless Linux server, Codex Usage prints an SSH tunnel command. Run it fro
 |---|---|
 | Per-machine attribution | Keep work, home, Windows, WSL, and Linux usage clearly separated |
 | History and automatic updates | Find existing records after installation and add new local usage automatically |
-| Regular and Fast | Classify each turn, keep regular tokens prominent, show Fast separately, and label unconfirmed usage as provisionally regular |
+| Total and Fast | Keep total tokens prominent, show regular / Fast beneath the overview, and show total plus Fast in trends, models, and sessions |
 | Session search and filters | Search by Thread, Session ID, project, model, or source; click an active quick filter again to clear it |
 | Daily drill-down | Explore trends, calendar days, zero-usage days, and any day's model mix |
 | Multi-dimensional details | Understand usage by model, token category, source, project, Thread, Session, and Agent |
@@ -142,7 +142,7 @@ The Dashboard has three first-level views: Overview, Daily, and Details. Overvie
 
 Display settings in the header use a more comfortable type scale by default and let you adjust font size, display density, color theme, interface motion, and language with an immediate preview. These preferences stay in the current browser and never change usage data or exports.
 
-### API-equivalent cost (Fast adjusted)
+### API-equivalent cost
 
 The Dashboard shows regular, Fast, and all tokens, with a mode filter. Raw Fast tokens are never multiplied. Fast cost uses Standard base rates multiplied by ChatGPT Codex credit factors: 2.5 for Astra, the GPT-5.6 family, and GPT-5.5; 2 for GPT-5.4. Models without a confirmed factor remain unpriced. History is classified only from explicit evidence for the same turn; unconfirmed usage is provisionally regular. See the [Fast accounting, backfill, and API guide (Chinese)](docs/fast-mode-accounting.md).
 

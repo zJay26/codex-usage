@@ -51,33 +51,19 @@
 }
 
 /* Service modes share the existing palette; labels remain meaningful without color. */
-.mode-hero-row { display: flex; align-items: center; flex-wrap: wrap; gap: 16px 28px; }
-.fast-hero { display: grid; gap: 3px; color: var(--copper-strong); }
-.fast-hero > span { font-size: .78rem; font-weight: 600; }
-.fast-hero > strong { font-family: var(--display); font-size: clamp(1.5rem, 3vw, 2.1rem); line-height: 1.15; font-variant-numeric: tabular-nums; }
-.fast-hero > small { color: var(--text-soft); font-size: .7rem; }
-.mode-overview-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 16px; margin: 12px 0 5px; color: var(--text-soft); font-size: .75rem; }
-.mode-unknown { color: var(--text-soft); font-size: .72rem; text-align: start; white-space: normal; line-height: 1.5; }
-.mode-unknown[hidden], #modeBackfillNote[hidden] { display: none; }
 .mode-cost-breakdown { margin-top: 10px; font-size: .8rem; color: var(--text-soft); font-variant-numeric: tabular-nums; }
-.mode-cost-details { margin-top: 10px; font-size: .75rem; color: var(--text-soft); line-height: 1.6; }
-.mode-cost-details summary { cursor: pointer; width: fit-content; }
-.mode-cost-details p { margin: 5px 0; }
 .mode-legend { display: flex; gap: 18px; padding: 8px 0 4px; color: var(--text-soft); font-size: .75rem; }
 .mode-legend > span::before { content: ""; display: inline-block; width: 16px; height: 3px; margin: 0 6px 3px 0; background: var(--teal); }
 .mode-legend > .fast::before { background: var(--copper); }
 .mode-fast, .day-fast-amount { color: var(--copper-strong); }
 .mode-detail { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .8rem; color: var(--text-soft); margin: 6px 0 12px; }
 .mode-row-detail { display: grid; gap: 3px; font-size: .7rem; margin-top: 4px; }
-.mode-row-detail .mode-unknown { font-size: .65rem; }
 .hour-line-fast { fill: none; stroke: var(--copper); stroke-width: 2; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
 .pulse-bar-space { gap: 3px; }
 .pulse-fast-bar { display: block; height: var(--pulse-height); width: 5px; border-radius: 3px; background: var(--copper); align-self: flex-end; }
 .day-fast-amount { display: block; font-size: .65rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .mini-model-row strong small { display: block; font-size: .7rem; font-weight: 500; }
 @media (max-width: 640px) {
-  .mode-hero-row { gap: 12px 22px; }
-  .mode-overview-meta { display: grid; }
   .mode-cost-breakdown { line-height: 1.7; }
   .day-fast-amount { font-size: .57rem; }
 }
@@ -472,7 +458,7 @@ h1, h2, h3 { font-family: var(--display); text-wrap: balance; }
 .session-head { padding: 9px 10px; color: var(--text-faint); font-family: var(--mono); font-size: var(--type-micro); letter-spacing: .07em; text-transform: uppercase; }
 .session-row { min-height: var(--density-session-height); padding: var(--density-row-block) 10px; border-top: 1px solid var(--line); font-size: var(--type-small); }
 .session-cell { min-width: 0; }
-.session-cell strong, .session-cell span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-cell strong, .session-cell span, .session-cell small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-cell strong { font-size: var(--type-ui); font-weight: 600; }
 .session-cell small, .session-cell span { margin-top: 3px; color: var(--text-faint); font-family: var(--mono); font-size: var(--type-micro); }
 .session-metric { min-width: 0; display: grid; justify-items: end; gap: 2px; font-family: var(--mono); text-align: right; }
@@ -704,3 +690,6 @@ select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px col
 }
 
 .breakdown-value .mode-fast { display: block; font-size: .7rem; }
+
+.mode-token-breakdown { margin: 10px 0 6px; color: var(--text-soft); font-size: .8rem; line-height: 1.7; font-variant-numeric: tabular-nums; }
+.mode-token-breakdown b, .mode-detail b { font-weight: inherit; }
