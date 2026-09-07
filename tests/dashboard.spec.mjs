@@ -70,6 +70,13 @@ test.beforeAll(async () => {
       last_token_usage: { input_tokens: 32, cached_input_tokens: 8, cache_write_input_tokens: 0, output_tokens: 8, reasoning_output_tokens: 2, total_tokens: 40 }
     } } }
   ];
+  fixture.push(
+    { timestamp, type: "turn_context", payload: { turn_id: "turn-fast", model: "gpt-5.4", service_tier: "priority" } },
+    { timestamp, type: "event_msg", payload: { type: "token_count", info: {
+      total_token_usage: { input_tokens: 40, cached_input_tokens: 0, output_tokens: 20, total_tokens: 60 },
+      last_token_usage: { input_tokens: 40, cached_input_tokens: 0, output_tokens: 20, total_tokens: 60 }
+    } } }
+  );
   await writeFile(path.join(sessionDir, "rollout-e2e.jsonl"), `${fixture.map((item) => JSON.stringify(item)).join("\n")}\n`);
   await writeFile(path.join(stateDir, "config.json"), JSON.stringify({
     listen_address: "127.0.0.1",
@@ -136,7 +143,7 @@ test("overview is calm, local-only, and exposes honest cost coverage", async ({ 
   await trend.getByRole("tab", { name: "每小时" }).click();
   await expect(trend.getByRole("heading", { name: "每小时Token用量" })).toBeVisible();
   await expect(trend.getByRole("tab", { name: "每小时" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator("#view-overview").getByText("Standard API 等价成本", { exact: true })).toBeVisible();
+  await expect(page.locator("#view-overview").getByText("API 等价成本（含 Fast 折算）", { exact: true })).toBeVisible();
   await expect(page.locator("#machineId")).not.toHaveText("—");
   await expect(page.locator("#overviewCoverage")).toContainText("已定价 100.0% Token");
   const styleIntegrity = await page.evaluate(() => ({
@@ -527,7 +534,7 @@ test("revisiting a range or view reuses the current data revision", async ({ pag
 
   await page.locator('[data-overview-range="all"]').click();
   await expect(page.locator("#overviewCost")).not.toHaveClass(/loading/);
-  const allCostKey = "/api/v1/cost-estimate?bucket=day";
+  const allCostKey = "/api/v1/cost-estimate?bucket=day&cost_basis=codex_fast_weighted";
   const firstAllCount = dataRequests.filter((item) => item === allCostKey).length;
   expect(firstAllCount).toBe(1);
 
@@ -673,4 +680,40 @@ test("localization catalogs, precedence, persistence, dates, numbers, and ARIA s
   await expect(page.getByRole("heading", { name: "每日用量" })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem("codex-usage-locale"))).toBe("zh-CN");
   expect(new URL(page.url()).searchParams.get("lang")).toBe("zh-CN");
+});
+
+
+test("Fast tokens, mode filters, weighted costs and responsive presentation agree", async ({page}, testInfo) => {
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.setViewportSize({width:1440,height:1100});
+  await page.goto(dashboardURL, {waitUntil:"networkidle"});
+  await expect(page.locator("#overviewTotal")).toHaveText("100");
+  await expect(page.locator("#overviewFast")).toHaveText("60");
+  await expect(page.locator("#overviewAll")).toContainText("160");
+  await expect(page.locator("#overviewUnknown")).toContainText("100");
+  const report = await (await page.request.get(`${baseURL}/api/v1/cost-estimate?cost_basis=codex_fast_weighted`)).json();
+  expect(Number(report.summary.fast_mode_usd)).toBeCloseTo(.0008,9);
+  expect(Number(report.summary.regular_mode_usd)).toBeCloseTo(.000455,9);
+  expect(report.modes.regular.total+report.modes.fast.total).toBe(160);
+  await page.locator(".mode-cost-details summary").click();
+  await page.screenshot({path:testInfo.outputPath("fast-desktop.png"),fullPage:true});
+  await page.evaluate(() => document.documentElement.dataset.theme="dark");
+  await page.screenshot({path:testInfo.outputPath("fast-dark.png"),fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:testInfo.outputPath("fast-mobile.png"),fullPage:true});
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.setViewportSize({width:1440,height:1100});
+  await page.locator('.primary-nav [data-view="details"]').click();
+  await expect(page.locator("#sessionRows .mode-fast").first()).toContainText("60");
+  await page.screenshot({path:testInfo.outputPath("fast-details.png"),fullPage:true});
+  await page.locator('.primary-nav [data-view="daily"]').click();
+  await expect(page.locator("#dayModes")).toContainText("60");
+  await page.screenshot({path:testInfo.outputPath("fast-calendar.png"),fullPage:true});
+  await page.locator('.primary-nav [data-view="overview"]').click();
+  await page.locator("#overviewUnknown").click();
+  await expect(page.locator("#overviewFast")).toHaveText("0");
+  await expect(page.locator("#filterMode")).toHaveValue("unknown");
+  expect((await (await page.request.get(`${baseURL}/api/v1/export?mode=fast`)).json()).every(row=>row.service_mode==="fast"&&!row.mode_assumed)).toBeTruthy();
+  expect(errors).toEqual([]);
 });

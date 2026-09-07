@@ -278,7 +278,7 @@ func (s *Server) handleCostEstimate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	builder, err := pricing.NewBuilder(overrides)
+	builder, err := pricing.NewBuilderForBasis(overrides, filter.CostBasis)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -296,12 +296,14 @@ func (s *Server) handleCostEstimate(w http.ResponseWriter, r *http.Request) {
 }
 
 type pricingCatalogResponse struct {
-	Basis          string                      `json:"basis"`
-	Currency       string                      `json:"currency"`
-	CatalogAsOf    string                      `json:"catalog_as_of"`
-	Catalog        []pricing.CatalogEntry      `json:"catalog"`
-	Overrides      map[string]pricing.Override `json:"overrides"`
-	UnpricedModels []model.BreakdownItem       `json:"unpriced_models"`
+	FastRulesAsOf   string                      `json:"fast_rules_as_of"`
+	FastRulesSource string                      `json:"fast_rules_source"`
+	Basis           string                      `json:"basis"`
+	Currency        string                      `json:"currency"`
+	CatalogAsOf     string                      `json:"catalog_as_of"`
+	Catalog         []pricing.CatalogEntry      `json:"catalog"`
+	Overrides       map[string]pricing.Override `json:"overrides"`
+	UnpricedModels  []model.BreakdownItem       `json:"unpriced_models"`
 }
 
 func (s *Server) handlePricing(w http.ResponseWriter, r *http.Request) {
@@ -403,7 +405,7 @@ func (s *Server) pricingResponse(ctx context.Context, overrides map[string]prici
 		overrides = map[string]pricing.Override{}
 	}
 	return pricingCatalogResponse{
-		Basis: pricing.Basis, Currency: pricing.Currency, CatalogAsOf: pricing.CatalogAsOf,
+		FastRulesAsOf: pricing.FastRulesAsOf, FastRulesSource: pricing.FastRulesSource, Basis: pricing.Basis, Currency: pricing.Currency, CatalogAsOf: pricing.CatalogAsOf,
 		Catalog: pricing.Catalog(), Overrides: overrides, UnpricedModels: unpriced,
 	}, nil
 }
@@ -483,7 +485,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		_ = writer.Write([]string{
 			"timestamp", "machine_id", "session_id", "turn_id", "model", "source", "agent_type",
 			"project_path", "thread_title", "input", "cached_input", "cache_write_input",
-			"output", "reasoning_output", "total", "provenance", "confidence", "codex_home",
+			"output", "reasoning_output", "total", "provenance", "confidence", "codex_home", "service_mode", "service_tier", "mode_source", "mode_assumed",
 		})
 		err = s.forEachEvent(r.Context(), filter, func(event model.UsageEvent) error {
 			return writer.Write([]string{
@@ -497,6 +499,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 				strconv.FormatInt(event.Usage.ReasoningOutput, 10),
 				strconv.FormatInt(event.Usage.Total, 10),
 				csvText(event.Provenance), csvText(event.Confidence), csvText(event.CodexHome),
+				csvText(event.ServiceMode.ServiceMode), csvText(event.ServiceTier), csvText(event.ModeSource), strconv.FormatBool(event.ModeAssumed),
 			})
 		})
 		writer.Flush()
@@ -611,6 +614,14 @@ func parseFilter(query url.Values) (model.Filter, error) {
 				filter.Until = dayEnd
 			}
 		}
+	}
+	filter.Mode = query.Get("mode")
+	if filter.Mode != "" && filter.Mode != "regular" && filter.Mode != "fast" && filter.Mode != "unknown" {
+		return filter, fmt.Errorf("mode: 不支持的模式 %q", filter.Mode)
+	}
+	filter.CostBasis = query.Get("cost_basis")
+	if !pricing.ValidBasis(filter.CostBasis) {
+		return filter, fmt.Errorf("cost_basis: 不支持的计价口径 %q", filter.CostBasis)
 	}
 	filter.Model = query.Get("model")
 	filter.Source = query.Get("source")

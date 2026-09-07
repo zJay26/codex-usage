@@ -25,7 +25,7 @@ If you use Codex on more than one computer, an account total cannot tell you **w
 
 Install it once on each computer, then open the Dashboard in your browser to see totals, daily trends, models, projects, and Sessions. Session details are searchable and include an API-equivalent cost estimate. New local usage appears automatically.
 
-All statistics stay on the current computer. codex-usage does not read prompts, replies, tool output, or `auth.json`. Cost is an estimate based on public API rates, not an OpenAI bill or account quota.
+All statistics stay on the current computer. codex-usage never stores prompts, replies, or tool output, and does not read `auth.json`. It extracts only usage and mode metadata, skipping conversation strings in diagnostic records. Cost is an estimate based on public API rates and Fast credit multipliers, not an OpenAI bill or account quota.
 
 ## Install directly
 
@@ -67,6 +67,7 @@ On a headless Linux server, Codex Usage prints an SSH tunnel command. Run it fro
 |---|---|
 | Per-machine attribution | Keep work, home, Windows, WSL, and Linux usage clearly separated |
 | History and automatic updates | Find existing records after installation and add new local usage automatically |
+| Regular and Fast | Classify each turn, keep regular tokens prominent, show Fast separately, and label unconfirmed usage as provisionally regular |
 | Session search and filters | Search by Thread, Session ID, project, model, or source; click an active quick filter again to clear it |
 | Daily drill-down | Explore trends, calendar days, zero-usage days, and any day's model mix |
 | Multi-dimensional details | Understand usage by model, token category, source, project, Thread, Session, and Agent |
@@ -77,11 +78,11 @@ On a headless Linux server, Codex Usage prints an SSH tunnel command. Run it fro
 
 ## Scope and boundaries
 
-| Counts | Does not count or read |
+| Counts | Does not count or store |
 |---|---|
 | Tokens, models, sources, projects, Threads, Sessions, Agents, and calendar days on this machine | Usage from other machines on the account |
 | Existing and newly added local Codex session usage | Account quota, subscription balance, or real bills |
-| Standard API text-token equivalent cost and pricing coverage | Prompts, replies, reasoning content, tool output, or `auth.json` |
+| API-equivalent cost using Standard text rates and Fast credit multipliers, plus pricing coverage | Prompts, replies, reasoning content, tool output, or `auth.json` |
 | Data-quality notices for duplicates, resets, malformed records, and rebuilds | Cloud sync, remote telemetry, or third-party analytics |
 
 > “Machine” means the host running Codex and codex-usage, not a remote target used by a shell or tool. Codex's official `/usage` shows account-level activity; codex-usage adds detailed attribution for the current computer.
@@ -141,7 +142,9 @@ The Dashboard has three first-level views: Overview, Daily, and Details. Overvie
 
 Display settings in the header use a more comfortable type scale by default and let you adjust font size, display density, color theme, interface motion, and language with an immediate preview. These preferences stay in the current browser and never change usage data or exports.
 
-### Standard API-equivalent cost
+### API-equivalent cost (Fast adjusted)
+
+The Dashboard shows regular, Fast, and all tokens, with a mode filter. Raw Fast tokens are never multiplied. Fast cost uses Standard base rates multiplied by ChatGPT Codex credit factors: 2.5 for Astra, the GPT-5.6 family, and GPT-5.5; 2 for GPT-5.4. Models without a confirmed factor remain unpriced. History is classified only from explicit evidence for the same turn; unconfirmed usage is provisionally regular. See the [Fast accounting, backfill, and API guide (Chinese)](docs/fast-mode-accounting.md).
 
 The estimator streams the normalized events that already passed source de-duplication and attribution filtering. It runs at query time, writes no cost data to SQLite, and leaves existing token totals unchanged. Arithmetic uses fixed-point nano-USD. Cached Input and Cache Write are removed from regular Input, and Reasoning is already included in Output, so neither is charged twice.
 
@@ -159,7 +162,7 @@ The bundled Standard text price catalog was updated on **2026-09-05**. All value
 | [GPT-5.3-Codex](https://developers.openai.com/api/docs/models/gpt-5.3-codex) | 1.75 | 0.175 | not published | 14.00 |
 | [GPT-5.2-Codex](https://developers.openai.com/api/docs/models/gpt-5.2-codex) | 1.75 | 0.175 | not published | 14.00 |
 
-GPT-6 Astra and GPT-5.6 Cache Write use the official 1.25× regular Input rule. Local JSONL stores cumulative token activity and cannot reliably reconstruct the per-request boundaries used for API billing, so the estimator reports an equivalent value using the Standard base rates above and does not infer long-context multipliers. The UI always shows estimated cost together with token pricing coverage; unknown models are never treated as zero-cost.
+GPT-6 Astra and GPT-5.6 Cache Write use the official 1.25× regular Input rule. Local JSONL stores cumulative token activity and cannot reliably reconstruct the per-request boundaries used for API billing. The estimator uses the Standard base rates above, adjusts explicitly identified Fast usage, and does not infer long-context multipliers. The UI always shows estimated cost together with token pricing coverage; unknown models are never treated as zero-cost.
 
 Internal models can be explicitly mapped to one built-in public model or assigned custom rates in the Dashboard. Overrides take effect without restarting:
 
@@ -216,7 +219,7 @@ The Dashboard supports `?lang=en|zh-CN` and its header language button. The URL 
 - never stores a Codex account ID
 - uses no CDN; frontend assets are embedded
 - refuses to listen outside `127.0.0.1`
-- never reads actual OpenAI billing or ChatGPT rate-limit/account quota; it only estimates Standard API-equivalent cost for this machine
+- never reads actual OpenAI billing or ChatGPT rate-limit/account quota; it only estimates API-equivalent cost for this machine, including the Fast adjustment
 - embeds its pricing catalog and makes no external network request for estimation
 
 Full local project paths and thread titles are retained for attribution, so JSON/CSV exports may contain that local metadata.

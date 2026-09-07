@@ -465,7 +465,7 @@ func TestForkReplayPrefixIsSkippedAndFileOwnerNeverChanges(t *testing.T) {
 	}
 	parent := strings.Join([]string{
 		`{"timestamp":"2026-07-30T01:00:00Z","type":"session_meta","payload":{"id":"parent","cwd":"/parent","originator":"codex_cli_rs"}}`,
-		`{"timestamp":"2026-07-30T01:00:01Z","type":"turn_context","payload":{"turn_id":"parent-turn","cwd":"/parent","model":"gpt-5.4"}}`,
+		`{"timestamp":"2026-07-30T01:00:01Z","type":"turn_context","payload":{"turn_id":"parent-turn","cwd":"/parent","model":"gpt-5.4","service_tier":"priority"}}`,
 		tokenLine("2026-07-30T01:00:02Z", usage(120, 20, 0, 30, 3, 150), usage(120, 20, 0, 30, 3, 150)),
 	}, "\n") + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "z-parent.jsonl"), []byte(parent), 0o600); err != nil {
@@ -473,11 +473,13 @@ func TestForkReplayPrefixIsSkippedAndFileOwnerNeverChanges(t *testing.T) {
 	}
 	for index, total := range []int64{180, 170, 160} {
 		childID := fmt.Sprintf("child-%d", index)
+		tierField := []string{`,"service_tier":"default"`, `,"service_tier":"priority"`, ""}[index]
 		content := strings.Join([]string{
 			fmt.Sprintf(`{"timestamp":"2026-07-30T02:00:00Z","type":"session_meta","payload":{"id":%q,"forked_from_id":"parent","cwd":"/child","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent"}}}}}`, childID),
+			`{"type":"turn_context","payload":{"turn_id":"parent-turn","model":"gpt-5.4","service_tier":"priority"}}`,
 			tokenLine("2026-07-30T01:00:02Z", usage(120, 20, 0, 30, 3, 150), usage(120, 20, 0, 30, 3, 150)),
 			`{"timestamp":"2026-07-30T01:00:00Z","type":"session_meta","payload":{"id":"parent","cwd":"/parent","originator":"codex_cli_rs"}}`,
-			fmt.Sprintf(`{"timestamp":"2026-07-30T02:00:01Z","type":"turn_context","payload":{"turn_id":%q,"cwd":"/child","model":"gpt-5.6-terra"}}`, "turn-"+childID),
+			fmt.Sprintf(`{"timestamp":"2026-07-30T02:00:01Z","type":"turn_context","payload":{"turn_id":%q,"cwd":"/child","model":"gpt-5.6-terra"%s}}`, "turn-"+childID, tierField),
 			tokenLine("2026-07-30T02:00:02Z", usage(total-30, 25, 0, 30, 3, total), usage(total-150, 5, 0, 0, 0, total-150)),
 		}, "\n") + "\n"
 		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("a-fork-%d.jsonl", index)), []byte(content), 0o600); err != nil {
@@ -496,6 +498,9 @@ func TestForkReplayPrefixIsSkippedAndFileOwnerNeverChanges(t *testing.T) {
 	summary, _ := st.Summary(context.Background(), model.Filter{})
 	if summary.GrandTotal != 210 || result.EventsInserted != 4 {
 		t.Fatalf("fork replay was counted as new usage: summary=%+v scan=%+v", summary, result)
+	}
+	if summary.Modes.Fast.Total != 170 || summary.Modes.Regular.Total != 40 || summary.Modes.Unknown.Total != 10 {
+		t.Fatalf("fork children inherited parent mode: %+v", summary.Modes)
 	}
 	sessions, err := st.Sessions(context.Background(), model.Filter{}, 10, 0)
 	if err != nil {

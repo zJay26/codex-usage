@@ -13,6 +13,7 @@ import (
 )
 
 type sessionQueryKey struct {
+	Mode, CostBasis            string
 	Revision                   uint64
 	SinceUnix, UntilUnix       int64
 	SinceDate, UntilDate       string
@@ -47,7 +48,7 @@ func timeCacheKey(value time.Time) int64 {
 
 func makeSessionQueryKey(revision uint64, filter model.Filter, limit, offset int, compact bool) sessionQueryKey {
 	return sessionQueryKey{
-		Revision: revision, SinceUnix: timeCacheKey(filter.Since), UntilUnix: timeCacheKey(filter.Until),
+		Revision: revision, Mode: filter.Mode, CostBasis: filter.CostBasis, SinceUnix: timeCacheKey(filter.Since), UntilUnix: timeCacheKey(filter.Until),
 		SinceDate: filter.SinceDate, UntilDate: filter.UntilDate,
 		Model: filter.Model, Source: filter.Source, AgentType: filter.AgentType,
 		Project: filter.Project, SessionID: filter.SessionID, Search: filter.Search,
@@ -102,7 +103,7 @@ func (s *Server) cachedSessionEstimates(ctx context.Context, queryKey sessionQue
 	builders := make(map[string]*pricing.Builder, len(items))
 	sessionIDs := make([]string, 0, len(items))
 	for _, item := range items {
-		builder, buildErr := pricing.NewBuilder(overrides)
+		builder, buildErr := pricing.NewBuilderForBasis(overrides, filter.CostBasis)
 		if buildErr != nil {
 			return nil, false, buildErr
 		}
