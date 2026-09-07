@@ -71,6 +71,82 @@
     headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }
   });
 
+
+  const usageKeys = ["input", "cached_input", "cache_write_input", "output", "reasoning_output", "total"];
+  const zeroUsage = () => Object.fromEntries(usageKeys.map((key) => [key, 0]));
+  const addUsage = (a, b) => Object.fromEntries(usageKeys.map((key) => [key, (a[key] || 0) + (b[key] || 0)]));
+  function modeUsage(usage, mode) {
+    const fast = scaledUsage(usage, .25);
+    fast.total = fast.input + fast.output;
+    const regular = Object.fromEntries(usageKeys.map((key) => [key, usage[key] - fast[key]]));
+    const unknown = scaledUsage(regular, .2); unknown.total = unknown.input + unknown.output;
+    if (mode === "fast") return { regular: zeroUsage(), fast, unknown: zeroUsage() };
+    if (mode === "regular") return { regular, fast: zeroUsage(), unknown };
+    if (mode === "unknown") return { regular: unknown, fast: zeroUsage(), unknown };
+    return { regular, fast, unknown };
+  }
+  function demoEstimate(modes, name, weighted) {
+    const estimate = { usd: "0.000000000", regular_input_usd: "0.000000000", cached_input_usd: "0.000000000", cache_write_input_usd: "0.000000000", output_usd: "0.000000000", regular_mode_usd: "0.000000000", fast_mode_usd: "0.000000000", standard_base_usd: "0.000000000", fast_surcharge_usd: "0.000000000", priced_tokens: 0, unpriced_tokens: 0, coverage_ratio: 0, reasons: [] };
+    const names = name ? [{ key: name, share: 1 }] : models;
+    const unpriced = (kind, model, tokens) => {
+      if (!tokens) return;
+      estimate.unpriced_tokens += tokens;
+      const existing = estimate.reasons.find((item) => item.kind === kind && item.model === model);
+      if (existing) existing.tokens += tokens;
+      else estimate.reasons.push({kind, model, tokens, detail: "Synthetic pricing evidence is incomplete."});
+    };
+    for (const part of names) {
+      const override = pricingOverrides[part.key];
+      const alias = override?.alias_of || part.key;
+      const rate = override?.input_usd_per_million != null ? override : catalog.find((item) => item.model === alias);
+      for (const mode of ["regular", "fast"]) {
+        const u = scaledUsage(modes[mode], part.share);
+        const total = u.input + u.output;
+        if (!rate) { unpriced("unknown_model", part.key, total); continue; }
+        const categories = {
+          regular_input_usd: (u.input-u.cached_input-u.cache_write_input)*Number(rate.input_usd_per_million)/1e6,
+          cached_input_usd: u.cached_input*Number(rate.cached_input_usd_per_million)/1e6,
+          cache_write_input_usd: u.cache_write_input*Number(rate.cache_write_input_usd_per_million||0)/1e6,
+          output_usd: u.output*Number(rate.output_usd_per_million)/1e6
+        };
+        const base = Object.values(categories).reduce((sum, amount) => sum+amount, 0);
+        estimate.standard_base_usd = (Number(estimate.standard_base_usd)+base).toFixed(9);
+        const missingWrite = rate.cache_write_input_usd_per_million == null ? u.cache_write_input : 0;
+        unpriced("cache_write_rate_missing", part.key, missingWrite);
+        const factor = {"gpt-6-astra":2.5,"gpt-5.6-sol":2.5,"gpt-5.6-terra":2.5,"gpt-5.6-luna":2.5,"gpt-5.5":2.5,"gpt-5.4":2}[alias];
+        if (weighted && mode === "fast" && !factor) { unpriced("fast_multiplier_missing", part.key, total-missingWrite); continue; }
+        const multiplier = weighted && mode === "fast" ? factor : 1;
+        for (const [key, amount] of Object.entries(categories)) estimate[key] = (Number(estimate[key])+amount*multiplier).toFixed(9);
+        estimate.usd = (Number(estimate.usd)+base*multiplier).toFixed(9);
+        estimate[mode === "fast" ? "fast_mode_usd" : "regular_mode_usd"] = (Number(estimate[mode === "fast" ? "fast_mode_usd" : "regular_mode_usd"])+base*multiplier).toFixed(9);
+        estimate.fast_surcharge_usd = (Number(estimate.fast_surcharge_usd)+base*(multiplier-1)).toFixed(9);
+        estimate.priced_tokens += total - missingWrite;
+      }
+    }
+    const total = estimate.priced_tokens+estimate.unpriced_tokens;
+    estimate.coverage_ratio = total ? estimate.priced_tokens/total : 0;
+    return estimate;
+  }
+  function withModes(payload, url) {
+    if (Array.isArray(payload)) return payload.map((row) => withModes(row, url));
+    if (!payload || typeof payload !== "object") return payload;
+    for (const key of ["points", "models", "items"]) if (payload[key]) payload[key] = withModes(payload[key], url);
+    if (payload.usage) {
+      payload.modes = modeUsage(payload.usage, url.searchParams.get("mode"));
+      payload.usage = addUsage(payload.modes.regular, payload.modes.fast);
+      if (payload.grand_total != null) payload.grand_total = payload.usage.total;
+      if (payload.estimate) payload.estimate = demoEstimate(payload.modes, payload.model || (models.some((m) => m.key === payload.key) ? payload.key : url.searchParams.get("model")), url.searchParams.get("cost_basis") === "codex_fast_weighted");
+    }
+    if (payload.summary && payload.points) {
+      payload.modes = {regular:zeroUsage(),fast:zeroUsage(),unknown:zeroUsage()};
+      for (const point of payload.points) for (const mode of ["regular","fast","unknown"]) payload.modes[mode]=addUsage(payload.modes[mode],point.modes[mode]);
+      payload.summary = demoEstimate(payload.modes, url.searchParams.get("model"), url.searchParams.get("cost_basis") === "codex_fast_weighted");
+      payload.basis = url.searchParams.get("cost_basis") || "current_standard_api_text_token_prices";
+      payload.fast_rules_as_of = "2026-09-07";
+    }
+    return payload;
+  }
+
   function filterScale(url) {
     let scale = 1;
     for (const key of ["model", "source", "agent_type", "project", "confidence"]) {
@@ -230,7 +306,7 @@
     const endpoint = url.pathname.slice(url.pathname.indexOf("/api/v1/"));
     const method = String(init.method || (typeof input !== "string" && input.method) || "GET").toUpperCase();
     if (endpoint === "/api/v1/status") return jsonResponse({
-      version: "2.3.7-demo", scanning: false,
+      version: "2.4.0-demo", scanning: false,
       status: {
         machine: { id: "synthetic-machine", label: "Synthetic Windows · demo", hostname: "synthetic-host", os: "windows", arch: "amd64" },
         last_scan: now.toISOString(), accounting_mode: "jsonl_only", otel_active: false,
@@ -238,28 +314,28 @@
         codex_homes: [{ path: "synthetic://codex-home", last_scan: now.toISOString(), files_scanned: 26 }]
       }
     });
-    if (endpoint === "/api/v1/summary") return jsonResponse(summary(url));
-    if (endpoint === "/api/v1/cost-estimate") return jsonResponse(costEstimate(url));
+    if (endpoint === "/api/v1/summary") return jsonResponse(withModes(summary(url),url));
+    if (endpoint === "/api/v1/cost-estimate") return jsonResponse(withModes(costEstimate(url),url));
     if (endpoint === "/api/v1/timeseries") {
       const bucket = url.searchParams.get("bucket") === "hour" ? "hour" : "day";
       const points = bucket === "hour" ? hourlyPoints(url) : dailyPoints(url).map((point) => ({ time: point.time, date: point.date, usage: point.usage }));
-      return jsonResponse({ bucket, points });
+      return jsonResponse(withModes({ bucket, points },url));
     }
-    if (endpoint === "/api/v1/breakdown") return jsonResponse(breakdown(url));
+    if (endpoint === "/api/v1/breakdown") return jsonResponse(withModes(breakdown(url),url));
     if (endpoint === "/api/v1/dimensions") return jsonResponse({
       models: models.map((item) => item.key),
       sources: sources.map((item) => item.key),
       projects: projects.map((item) => item.key)
     });
     if (endpoint === "/api/v1/sessions") {
-      const payload = sessionPayload(url);
+      const payload = withModes(sessionPayload(url),url);
       if (["0", "false"].includes((url.searchParams.get("include_estimate") || "").toLowerCase())) {
         payload.items = payload.items.map(({ estimate, ...item }) => item);
       }
       return jsonResponse(payload);
     }
     if (endpoint === "/api/v1/session-estimates") {
-      const payload = sessionPayload(url);
+      const payload = withModes(sessionPayload(url),url);
       return jsonResponse({ items: payload.items.map((item) => ({ session_id: item.session_id, estimate: item.estimate })) });
     }
     if (endpoint === "/api/v1/warnings") return jsonResponse({ items: [
@@ -276,7 +352,7 @@
       }
     }
     if (endpoint === "/api/v1/rescan" && method === "POST") return jsonResponse({ homes: 1, files: 26, records: 940, events_inserted: 2, duplicates: 14, warnings: 0 });
-    if (endpoint === "/api/v1/export") return jsonResponse(sessionPayload(url).items);
+    if (endpoint === "/api/v1/export") return jsonResponse(demoExportRows(url));
     return jsonResponse({ error: `No synthetic adapter for ${method} ${endpoint}` }, 404);
   }
 
@@ -284,16 +360,19 @@
   syntheticFetch.__codexUsageOriginal = originalFetch;
   root.fetch = syntheticFetch;
 
+  function demoExportRows(url) {
+    return withModes(sessionPayload(url),url).items.flatMap((item) => {
+      const knownRegular = Object.fromEntries(usageKeys.map(key=>[key,item.modes.regular[key]-item.modes.unknown[key]]));
+      return [["standard",knownRegular],["fast",item.modes.fast],["unknown",item.modes.unknown]].filter(([,usage])=>usage.total>0).map(([mode,usage])=>({
+        session_id:item.session_id,turn_id:item.session_id+"-"+mode,project_path:item.project_path,model:item.model,source:item.source,
+        total:usage.total,usage,service_mode:mode,service_tier:mode==="fast"?"priority":mode==="standard"?"default":"",mode_source:"synthetic",mode_assumed:mode==="unknown"
+      }));
+    });
+  }
   function exportData(format, requestPath) {
-    const rows = sessionPayload(new URL(requestPath || root.location.href, root.location.href)).items.map((item) => ({
-      session_id: item.session_id,
-      project_path: item.project_path,
-      model: item.model,
-      source: item.source,
-      total: item.usage.total
-    }));
+    const rows = demoExportRows(new URL(requestPath || root.location.href,root.location.href));
     if (format === "csv") {
-      const columns = ["session_id", "project_path", "model", "source", "total"];
+      const columns = ["session_id", "turn_id", "project_path", "model", "source", "total", "service_mode", "service_tier", "mode_source", "mode_assumed"];
       const csv = [columns.join(","), ...rows.map((row) => columns.map((key) => JSON.stringify(row[key])).join(","))].join("\n");
       return `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;
     }

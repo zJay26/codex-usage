@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	schemaVersion               = 7
+	schemaVersion               = 8
 	historicalRebuildReasonKey  = "historical_rebuild_required"
 	pricingAggregatableEventSQL = `e.input_tokens>=0 AND e.cached_input_tokens>=0 AND e.cache_write_input_tokens>=0
 		AND e.output_tokens>=0 AND e.reasoning_output_tokens>=0 AND e.total_tokens>=0
@@ -77,18 +77,19 @@ type FileCursor struct {
 }
 
 type Status struct {
-	Machine          model.Machine `json:"machine"`
-	DatabasePath     string        `json:"database_path"`
-	AccountingMode   string        `json:"accounting_mode"`
-	LastScan         *time.Time    `json:"last_scan,omitempty"`
-	OTelLastReceived *time.Time    `json:"otel_last_received,omitempty"`
-	OTelActive       bool          `json:"otel_active"`
-	EventCount       int64         `json:"event_count"`
-	SessionCount     int64         `json:"session_count"`
-	WarningCount     int64         `json:"warning_count"`
-	DataRevision     uint64        `json:"data_revision"`
-	CoverageGaps     []CoverageGap `json:"coverage_gaps,omitempty"`
-	CodexHomes       []HomeStatus  `json:"codex_homes"`
+	ModeBackfill     []DiagnosticProgress `json:"mode_backfill"`
+	Machine          model.Machine        `json:"machine"`
+	DatabasePath     string               `json:"database_path"`
+	AccountingMode   string               `json:"accounting_mode"`
+	LastScan         *time.Time           `json:"last_scan,omitempty"`
+	OTelLastReceived *time.Time           `json:"otel_last_received,omitempty"`
+	OTelActive       bool                 `json:"otel_active"`
+	EventCount       int64                `json:"event_count"`
+	SessionCount     int64                `json:"session_count"`
+	WarningCount     int64                `json:"warning_count"`
+	DataRevision     uint64               `json:"data_revision"`
+	CoverageGaps     []CoverageGap        `json:"coverage_gaps,omitempty"`
+	CodexHomes       []HomeStatus         `json:"codex_homes"`
 }
 
 // CoverageGap is retained only so the /api/v1/status response remains source
@@ -109,6 +110,7 @@ type HomeStatus struct {
 }
 
 type SessionRow struct {
+	Modes model.ModeUsage `json:"modes"`
 	model.SessionInfo
 	Usage      model.TokenUsage `json:"usage"`
 	EventCount int64            `json:"event_count"`
@@ -349,7 +351,10 @@ func (s *Store) migrate(ctx context.Context) error {
 			return err
 		}
 	}
-	if databaseVersion > 0 && databaseVersion < schemaVersion {
+	if err := migrateServiceModes(ctx, tx); err != nil {
+		return err
+	}
+	if databaseVersion > 0 && databaseVersion < 7 {
 		// Parser migrations can invalidate every derived event. Preserve the old
 		// ledger until the user explicitly approves a rebuild instead of deleting
 		// it while merely opening the database.
@@ -544,6 +549,14 @@ func (s *Store) InsertEvent(ctx context.Context, event model.UsageEvent, originP
 	if event.MachineID == "" {
 		event.MachineID = s.machine.ID
 	}
+	event.ServiceMode = event.ServiceMode.Normalized()
+	if event.ModeSource == "unavailable" {
+		m, err := s.ModeForTurn(ctx, event.CodexHome, event.SessionID, event.TurnID)
+		if err != nil {
+			return false, err
+		}
+		event.ServiceMode = m
+	}
 	event.Usage = event.Usage.Compatible()
 	if !event.Timestamp.IsZero() {
 		local := event.Timestamp.In(time.Local)
@@ -557,14 +570,14 @@ func (s *Store) InsertEvent(ctx context.Context, event model.UsageEvent, originP
 	result, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO usage_events(
 		id,usage_at,local_date,local_hour,segment,observed_at,machine_id,session_id,turn_id,model,source,agent_type,
 		project_path,thread_title,input_tokens,cached_input_tokens,cache_write_input_tokens,
-		output_tokens,reasoning_output_tokens,total_tokens,provenance,confidence,codex_home,origin_path)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		output_tokens,reasoning_output_tokens,total_tokens,provenance,confidence,codex_home,origin_path,service_mode,service_tier,mode_source)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		event.ID, unixOrZero(event.Timestamp), event.LocalDate, event.LocalHour, event.Segment,
 		unixOrZero(event.ObservedAt), event.MachineID,
 		event.SessionID, event.TurnID, event.Model, event.Source, defaultAgent(event.AgentType),
 		event.ProjectPath, event.ThreadTitle, event.Usage.Input, event.Usage.CachedInput,
 		event.Usage.CacheWriteInput, event.Usage.Output, event.Usage.ReasoningOutput,
-		event.Usage.Total, event.Provenance, event.Confidence, event.CodexHome, originPath)
+		event.Usage.Total, event.Provenance, event.Confidence, event.CodexHome, originPath, event.ServiceMode.ServiceMode, event.ServiceTier, event.ModeSource)
 	if err != nil {
 		return false, err
 	}
@@ -989,19 +1002,20 @@ func (s *Store) Summary(ctx context.Context, filter model.Filter) (model.Summary
 		COALESCE(SUM(e.cache_write_input_tokens),0),COALESCE(SUM(e.output_tokens),0),
 		COALESCE(SUM(e.reasoning_output_tokens),0),COALESCE(SUM(e.total_tokens),0),
 		COUNT(*),COUNT(DISTINCT NULLIF(e.session_id,'')),COALESCE(MIN(NULLIF(e.usage_at,0)),0),
-		COALESCE(MAX(e.usage_at),0) FROM usage_events e WHERE ` + where
+		COALESCE(MAX(e.usage_at),0),` + modeUsageSQL + ` FROM usage_events e WHERE ` + where
 	var out model.Summary
 	var first, last int64
-	err := s.reader().QueryRowContext(ctx, query, args...).Scan(
+	err := s.reader().QueryRowContext(ctx, query, args...).Scan(append([]any{
 		&out.Usage.Input, &out.Usage.CachedInput, &out.Usage.CacheWriteInput,
 		&out.Usage.Output, &out.Usage.ReasoningOutput, &out.Usage.Total,
-		&out.EventCount, &out.SessionCount, &first, &last)
+		&out.EventCount, &out.SessionCount, &first, &last}, modeUsageDest(&out.Modes)...)...)
 	if err != nil {
 		return out, err
 	}
 	out.FirstEvent = timeFromUnix(first)
 	out.LastEvent = timeFromUnix(last)
 	out.GrandTotal = out.Usage.Total
+	out.Modes.Complete(out.Usage)
 	var warnings int64
 	_ = s.reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM warnings WHERE `+actionableWarningSQL).Scan(&warnings)
 	out.CoverageIncomplete = warnings > 0
@@ -1020,7 +1034,7 @@ func (s *Store) Timeseries(ctx context.Context, filter model.Filter, bucket stri
 	rows, err := s.reader().QueryContext(ctx, `SELECT `+bucketColumn+`,
 		COALESCE(SUM(e.input_tokens),0),COALESCE(SUM(e.cached_input_tokens),0),
 		COALESCE(SUM(e.cache_write_input_tokens),0),COALESCE(SUM(e.output_tokens),0),
-		COALESCE(SUM(e.reasoning_output_tokens),0),COALESCE(SUM(e.total_tokens),0)
+		COALESCE(SUM(e.reasoning_output_tokens),0),COALESCE(SUM(e.total_tokens),0),`+modeUsageSQL+`
 		FROM usage_events e WHERE `+where+` AND e.usage_at>0 AND `+bucketColumn+`<>''
 		GROUP BY `+bucketColumn+` ORDER BY `+bucketColumn, args...)
 	if err != nil {
@@ -1031,9 +1045,10 @@ func (s *Store) Timeseries(ctx context.Context, filter model.Filter, bucket stri
 	for rows.Next() {
 		var key string
 		var usage model.TokenUsage
-		if err := rows.Scan(&key, &usage.Input, &usage.CachedInput,
+		var modes model.ModeUsage
+		if err := rows.Scan(append([]any{&key, &usage.Input, &usage.CachedInput,
 			&usage.CacheWriteInput, &usage.Output, &usage.ReasoningOutput,
-			&usage.Total); err != nil {
+			&usage.Total}, modeUsageDest(&modes)...)...); err != nil {
 			return nil, err
 		}
 		layout := "2006-01-02"
@@ -1041,7 +1056,8 @@ func (s *Store) Timeseries(ctx context.Context, filter model.Filter, bucket stri
 			layout = "2006-01-02T15"
 		}
 		parsed, _ := time.ParseInLocation(layout, key, time.UTC)
-		out = append(out, model.Point{Time: parsed, Date: key, Usage: usage})
+		modes.Complete(usage)
+		out = append(out, model.Point{Time: parsed, Date: key, Usage: usage, Modes: modes})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -1075,7 +1091,7 @@ func (s *Store) Breakdown(ctx context.Context, filter model.Filter, dimension st
 		COALESCE(SUM(e.input_tokens),0),COALESCE(SUM(e.cached_input_tokens),0),
 		COALESCE(SUM(e.cache_write_input_tokens),0),COALESCE(SUM(e.output_tokens),0),
 		COALESCE(SUM(e.reasoning_output_tokens),0),COALESCE(SUM(e.total_tokens),0),
-		COUNT(*),COUNT(DISTINCT NULLIF(e.session_id,''))
+		COUNT(*),COUNT(DISTINCT NULLIF(e.session_id,'')),`+modeUsageSQL+`
 		FROM usage_events e WHERE %s GROUP BY item ORDER BY SUM(e.total_tokens) DESC LIMIT ?`, column, where)
 	rows, err := s.reader().QueryContext(ctx, query, args...)
 	if err != nil {
@@ -1085,11 +1101,12 @@ func (s *Store) Breakdown(ctx context.Context, filter model.Filter, dimension st
 	var out []model.BreakdownItem
 	for rows.Next() {
 		var item model.BreakdownItem
-		if err := rows.Scan(&item.Key, &item.Usage.Input, &item.Usage.CachedInput,
+		if err := rows.Scan(append([]any{&item.Key, &item.Usage.Input, &item.Usage.CachedInput,
 			&item.Usage.CacheWriteInput, &item.Usage.Output, &item.Usage.ReasoningOutput,
-			&item.Usage.Total, &item.Events, &item.Sessions); err != nil {
+			&item.Usage.Total, &item.Events, &item.Sessions}, modeUsageDest(&item.Modes)...)...); err != nil {
 			return nil, err
 		}
+		item.Modes.Complete(item.Usage)
 		out = append(out, item)
 	}
 	return out, rows.Err()
@@ -1179,7 +1196,7 @@ func (s *Store) Sessions(ctx context.Context, filter model.Filter, limit, offset
 			WHEN MAX(e.confidence='aggregate_only')=1 THEN 'aggregate_only'
 			WHEN MAX(e.confidence='gap_fallback')=1 THEN 'gap_fallback'
 			ELSE COALESCE(MAX(e.confidence),'')
-		END,COALESCE(MAX(e.usage_at),0)
+		END,COALESCE(MAX(e.usage_at),0),` + modeUsageSQL + `
 		FROM usage_events e LEFT JOIN sessions s ON s.session_id=e.session_id
 		WHERE ` + where + ` GROUP BY sid ORDER BY MAX(e.usage_at) DESC LIMIT ? OFFSET ?`
 	rows, err := s.reader().QueryContext(ctx, query, args...)
@@ -1192,14 +1209,15 @@ func (s *Store) Sessions(ctx context.Context, filter model.Filter, limit, offset
 		var item SessionRow
 		var created, updated, last int64
 		var archived int
-		if err := rows.Scan(&item.SessionID, &item.RolloutPath, &item.CodexHome,
+		if err := rows.Scan(append([]any{&item.SessionID, &item.RolloutPath, &item.CodexHome,
 			&item.Title, &item.ProjectPath, &item.Model, &item.Source,
 			&item.ThreadSource, &item.AgentType, &item.CLIValue, &item.TokensUsed,
 			&created, &updated, &archived, &item.Usage.Input, &item.Usage.CachedInput,
 			&item.Usage.CacheWriteInput, &item.Usage.Output, &item.Usage.ReasoningOutput,
-			&item.Usage.Total, &item.EventCount, &item.Confidence, &last); err != nil {
+			&item.Usage.Total, &item.EventCount, &item.Confidence, &last}, modeUsageDest(&item.Modes)...)...); err != nil {
 			return nil, err
 		}
+		item.Modes.Complete(item.Usage)
 		item.CreatedAt = timeFromUnix(created)
 		item.UpdatedAt = timeFromUnix(updated)
 		item.LastUsage = timeFromUnix(last)
@@ -1227,20 +1245,20 @@ func (s *Store) WalkSessionPricingAggregates(ctx context.Context, filter model.F
 		args = append(args, sessionID)
 	}
 	where += " AND " + sessionExpr + " IN (" + strings.Join(placeholders, ",") + ")"
-	rows, err := s.reader().QueryContext(ctx, `SELECT `+sessionExpr+`,e.model,
+	rows, err := s.reader().QueryContext(ctx, `SELECT `+sessionExpr+`,e.model,e.service_mode,
 		COALESCE(MIN(NULLIF(e.usage_at,0)),0),
 		COALESCE(SUM(e.input_tokens),0),COALESCE(SUM(e.cached_input_tokens),0),
 		COALESCE(SUM(e.cache_write_input_tokens),0),COALESCE(SUM(e.output_tokens),0),
 		COALESCE(SUM(e.reasoning_output_tokens),0),COALESCE(SUM(e.total_tokens),0)
 		FROM usage_events e WHERE `+where+` AND `+pricingAggregatableEventSQL+`
-		GROUP BY `+sessionExpr+`,e.model,`+pricingClassSQL, args...)
+		GROUP BY `+sessionExpr+`,e.model,e.service_mode,CASE WHEN e.service_mode='fast' THEN e.id ELSE '' END,`+pricingClassSQL, args...)
 	if err != nil {
 		return err
 	}
 	for rows.Next() {
 		var event model.UsageEvent
 		var usageAt int64
-		if err := rows.Scan(&event.SessionID, &event.Model, &usageAt,
+		if err := rows.Scan(&event.SessionID, &event.Model, &event.ServiceMode.ServiceMode, &usageAt,
 			&event.Usage.Input, &event.Usage.CachedInput, &event.Usage.CacheWriteInput,
 			&event.Usage.Output, &event.Usage.ReasoningOutput, &event.Usage.Total); err != nil {
 			rows.Close()
@@ -1261,7 +1279,7 @@ func (s *Store) WalkSessionPricingAggregates(ctx context.Context, filter model.F
 	}
 
 	invalidArgs := append([]any{}, args...)
-	invalidRows, err := s.reader().QueryContext(ctx, `SELECT `+sessionExpr+`,usage_at,model,
+	invalidRows, err := s.reader().QueryContext(ctx, `SELECT `+sessionExpr+`,usage_at,model,service_mode,
 		input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,
 		reasoning_output_tokens,total_tokens
 		FROM usage_events e WHERE `+where+` AND NOT (`+pricingAggregatableEventSQL+`)`, invalidArgs...)
@@ -1272,7 +1290,7 @@ func (s *Store) WalkSessionPricingAggregates(ctx context.Context, filter model.F
 	for invalidRows.Next() {
 		var event model.UsageEvent
 		var usageAt int64
-		if err := invalidRows.Scan(&event.SessionID, &usageAt, &event.Model,
+		if err := invalidRows.Scan(&event.SessionID, &usageAt, &event.Model, &event.ServiceMode.ServiceMode,
 			&event.Usage.Input, &event.Usage.CachedInput, &event.Usage.CacheWriteInput,
 			&event.Usage.Output, &event.Usage.ReasoningOutput, &event.Usage.Total); err != nil {
 			return err
@@ -1297,7 +1315,7 @@ func (s *Store) WalkEvents(ctx context.Context, filter model.Filter, fn func(mod
 	rows, err := s.reader().QueryContext(ctx, `SELECT id,usage_at,local_date,local_hour,observed_at,machine_id,
 		session_id,turn_id,model,source,agent_type,project_path,thread_title,
 		input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,
-		reasoning_output_tokens,total_tokens,provenance,confidence,codex_home
+		reasoning_output_tokens,total_tokens,provenance,confidence,codex_home,service_mode,service_tier,mode_source
 		FROM usage_events e WHERE `+where+` ORDER BY e.usage_at DESC,e.observed_at DESC,e.id DESC`, args...)
 	if err != nil {
 		return err
@@ -1332,7 +1350,7 @@ func (s *Store) WalkPricingEvents(ctx context.Context, filter model.Filter, fn f
 	rows, err := s.reader().QueryContext(ctx, `SELECT id,usage_at,local_date,local_hour,observed_at,machine_id,
 		session_id,turn_id,model,source,agent_type,project_path,thread_title,
 		input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,
-		reasoning_output_tokens,total_tokens,provenance,confidence,codex_home
+		reasoning_output_tokens,total_tokens,provenance,confidence,codex_home,service_mode,service_tier,mode_source
 		FROM usage_events e WHERE `+where, args...)
 	if err != nil {
 		return err
@@ -1351,6 +1369,7 @@ func (s *Store) WalkPricingEvents(ctx context.Context, filter model.Filter, fn f
 }
 
 // WalkPricingAggregates emits one valid aggregate per local day and model.
+// Fast rows retain event boundaries so fractional multipliers round identically.
 // Rows that are unsafe to aggregate remain individual so pricing diagnostics
 // are byte-for-byte equivalent to evaluating raw events.
 func (s *Store) WalkPricingAggregates(ctx context.Context, filter model.Filter, fn func(model.UsageEvent) error) error {
@@ -1358,20 +1377,20 @@ func (s *Store) WalkPricingAggregates(ctx context.Context, filter model.Filter, 
 	if requiresAttribution(filter) {
 		where, args = attributionWhere(filter, "e", true)
 	}
-	rows, err := s.reader().QueryContext(ctx, `SELECT e.local_date,e.model,
+	rows, err := s.reader().QueryContext(ctx, `SELECT e.local_date,e.model,e.service_mode,
 		COALESCE(MIN(NULLIF(e.usage_at,0)),0),
 		COALESCE(SUM(e.input_tokens),0),COALESCE(SUM(e.cached_input_tokens),0),
 		COALESCE(SUM(e.cache_write_input_tokens),0),COALESCE(SUM(e.output_tokens),0),
 		COALESCE(SUM(e.reasoning_output_tokens),0),COALESCE(SUM(e.total_tokens),0)
 		FROM usage_events e WHERE `+where+` AND `+pricingAggregatableEventSQL+`
-		GROUP BY e.local_date,e.model,`+pricingClassSQL, args...)
+		GROUP BY e.local_date,e.model,e.service_mode,CASE WHEN e.service_mode='fast' THEN e.id ELSE '' END,`+pricingClassSQL, args...)
 	if err != nil {
 		return err
 	}
 	for rows.Next() {
 		var event model.UsageEvent
 		var usageAt int64
-		if err := rows.Scan(&event.LocalDate, &event.Model, &usageAt,
+		if err := rows.Scan(&event.LocalDate, &event.Model, &event.ServiceMode.ServiceMode, &usageAt,
 			&event.Usage.Input, &event.Usage.CachedInput, &event.Usage.CacheWriteInput,
 			&event.Usage.Output, &event.Usage.ReasoningOutput, &event.Usage.Total); err != nil {
 			rows.Close()
@@ -1392,7 +1411,7 @@ func (s *Store) WalkPricingAggregates(ctx context.Context, filter model.Filter, 
 	}
 
 	invalidArgs := append([]any{}, args...)
-	invalidRows, err := s.reader().QueryContext(ctx, `SELECT usage_at,local_date,model,
+	invalidRows, err := s.reader().QueryContext(ctx, `SELECT usage_at,local_date,model,service_mode,
 		input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,
 		reasoning_output_tokens,total_tokens
 		FROM usage_events e WHERE `+where+` AND NOT (`+pricingAggregatableEventSQL+`)`, invalidArgs...)
@@ -1403,7 +1422,7 @@ func (s *Store) WalkPricingAggregates(ctx context.Context, filter model.Filter, 
 	for invalidRows.Next() {
 		var event model.UsageEvent
 		var usageAt int64
-		if err := invalidRows.Scan(&usageAt, &event.LocalDate, &event.Model,
+		if err := invalidRows.Scan(&usageAt, &event.LocalDate, &event.Model, &event.ServiceMode.ServiceMode,
 			&event.Usage.Input, &event.Usage.CachedInput, &event.Usage.CacheWriteInput,
 			&event.Usage.Output, &event.Usage.ReasoningOutput, &event.Usage.Total); err != nil {
 			return err
@@ -1431,7 +1450,7 @@ func (s *Store) queryEvents(ctx context.Context, query EventQuery, pricingView b
 	rows, err := s.reader().QueryContext(ctx, `SELECT id,usage_at,local_date,local_hour,observed_at,machine_id,
 		session_id,turn_id,model,source,agent_type,project_path,thread_title,
 		input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,
-		reasoning_output_tokens,total_tokens,provenance,confidence,codex_home
+		reasoning_output_tokens,total_tokens,provenance,confidence,codex_home,service_mode,service_tier,mode_source
 		FROM usage_events e WHERE `+where+` ORDER BY e.usage_at DESC,e.observed_at DESC,e.id DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return nil, err
@@ -1460,9 +1479,10 @@ func scanUsageEvent(scanner usageEventScanner) (model.UsageEvent, error) {
 		&item.ProjectPath, &item.ThreadTitle, &item.Usage.Input,
 		&item.Usage.CachedInput, &item.Usage.CacheWriteInput, &item.Usage.Output,
 		&item.Usage.ReasoningOutput, &item.Usage.Total, &item.Provenance,
-		&item.Confidence, &item.CodexHome); err != nil {
+		&item.Confidence, &item.CodexHome, &item.ServiceMode.ServiceMode, &item.ServiceTier, &item.ModeSource); err != nil {
 		return model.UsageEvent{}, err
 	}
+	item.ServiceMode = item.ServiceMode.Normalized()
 	item.Timestamp = timeFromUnix(usageAt)
 	item.ObservedAt = timeFromUnix(observedAt)
 	return item, nil
@@ -1470,6 +1490,7 @@ func scanUsageEvent(scanner usageEventScanner) (model.UsageEvent, error) {
 
 func (s *Store) Status(ctx context.Context) (Status, error) {
 	out := Status{Machine: s.machine, DatabasePath: s.path, AccountingMode: "jsonl_only", DataRevision: s.revision.Load()}
+	out.ModeBackfill, _ = s.DiagnosticProgress(ctx)
 	reader := s.reader()
 	if err := reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_events`).Scan(&out.EventCount); err != nil {
 		return out, err
@@ -1542,6 +1563,14 @@ func canonicalWhere(filter model.Filter, alias string) (string, []any) {
 		}
 		parts = append(parts, alias+"."+column+"=?")
 		args = append(args, value)
+	}
+	switch filter.Mode {
+	case "regular":
+		parts = append(parts, alias+".service_mode<>'fast'")
+	case "fast":
+		parts = append(parts, alias+".service_mode='fast'")
+	case "unknown":
+		parts = append(parts, alias+".service_mode='unknown'")
 	}
 	return strings.Join(parts, " AND "), args
 }

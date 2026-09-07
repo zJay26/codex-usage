@@ -4,6 +4,7 @@ const i18n = window.CodexUsageI18n;
 const t = (key, values) => i18n.t(key, values);
 
 const FILTER_FIELDS = {
+  mode: { selector: "#filterMode", labelKey: "filter.mode" },
   date: { selector: "#filterDate", labelKey: "filter.date" },
   model: { selector: "#filterModel", labelKey: "filter.model" },
   source: { selector: "#filterSource", labelKey: "filter.source" },
@@ -200,7 +201,7 @@ function fillCompleteHours(rawPoints, windows) {
   return Array.from({ length: windows.completeHours }, (_, index) => {
     const start = new Date(windows.chartStart.getTime() + index * 60 * 60_000);
     const existing = byHour.get(hourKey(start));
-    return { date: hourKey(start), start, usage: existing?.usage || emptyUsage() };
+    return { date: hourKey(start), start, usage: existing?.usage || emptyUsage(), modes: existing?.modes };
   });
 }
 
@@ -337,9 +338,33 @@ function filterQuery(extra = {}, filters = state.filters) {
 }
 
 function apiURL(path, extra = {}, filters = state.filters) {
-  const query = filterQuery(extra, filters);
+  const query = filterQuery({ ...extra, ...(["/api/v1/cost-estimate", "/api/v1/sessions", "/api/v1/session-estimates"].includes(path) ? { cost_basis: "codex_fast_weighted" } : {}) }, filters);
   return query ? `${path}?${query}` : path;
 }
+
+
+function modesFor(row = {}) {
+  if (row.modes) return row.modes;
+  const usage = row.usage || emptyUsage();
+  return { regular: usage, fast: emptyUsage(), unknown: usage };
+}
+function modeText(row = {}) {
+  const m = modesFor(row);
+  return `${t("mode.regular")} ${formatToken(usageTotal(m.regular))} / Fast ${formatToken(usageTotal(m.fast))}`;
+}
+function modeDetail(row = {}, compact = false) {
+  const m = modesFor(row), unknown = usageTotal(m.unknown);
+  return `<span class="mode-fast">Fast <b>${formatToken(usageTotal(m.fast))}</b></span>${compact ? "" : `<span>${t("mode.allTokens", { tokens: formatToken(usageTotal(row.usage)) })}</span>`}${unknown ? `<button type="button" class="text-button mode-unknown pressable" data-mode-filter="unknown" title="${escapeHTML(t("mode.unknownNote", {tokens: fullToken(unknown)}))}">${escapeHTML(t(compact ? "mode.unknownShort" : "mode.unknownNote", {tokens: formatToken(unknown)}))}</button>` : ""}`;
+}
+function costModes(estimate = {}) {
+  return `${t("mode.regular")} ${formatUSD(estimate.regular_mode_usd ?? estimate.usd ?? 0)} / Fast ${formatUSD(estimate.fast_mode_usd || 0)}`;
+}
+document.addEventListener("click", (event) => {
+  const button = event.target.closest?.("[data-mode-filter]");
+  if (!button) return;
+  state.filters.mode = button.dataset.modeFilter;
+  resetDataSelections(); syncFilterForm(); renderFilterChips(); loadCurrentView();
+});
 
 function estimateTokens(estimate = {}) {
   return Number(estimate.priced_tokens || 0) + Number(estimate.unpriced_tokens || 0);
@@ -386,6 +411,10 @@ async function loadStatus() {
   const payload = await api("/api/v1/status");
   state.status = payload;
   const status = payload.status || {};
+  const progress = status.mode_backfill || [];
+  const pending = progress.some((p) => p.state === "pending"), unavailable = progress.some((p) => p.state === "unavailable");
+  $("#modeBackfillNote").hidden = !pending && !unavailable;
+  $("#modeBackfillNote").textContent = t(pending ? "mode.backfill" : "mode.unavailable");
   const revision = status.data_revision == null ? null : String(status.data_revision);
   const changed = state.dataRevision !== null && revision !== null && revision !== state.dataRevision;
   if (changed) {
@@ -453,6 +482,7 @@ function renderFilterChips() {
   $("#filterChips").innerHTML = entries.map(([key, value]) => {
     const display = key === "date" ? i18n.formatDate(dateFromKey(value), { year: "numeric", month: "short", day: "numeric" })
       : key === "project" ? shortPath(value)
+      : key === "mode" ? t(value === "regular" ? "mode.regularAssumed" : `mode.${value}`)
       : key === "confidence" ? confidenceLabel(value)
         : key === "session_id" ? shortId(value) : value;
     const label = fieldLabel(key);
@@ -653,6 +683,7 @@ function navigateHourlyDate(value, direction = 0) {
 function renderHourlySelection(point) {
   const totalNode = $("#hourlyTotal");
   if (!point) {
+    $("#hourlyModes").innerHTML = "";
     $("#hourlyWindowLabel").textContent = "—";
     totalNode.textContent = "—";
     totalNode.removeAttribute("title");
@@ -660,8 +691,9 @@ function renderHourlySelection(point) {
     $("#hourlyLedger").innerHTML = `<span class="hourly-placeholder">${escapeHTML(t("dynamic.hourlyEmpty"))}</span>`;
     return;
   }
-  const usage = point.usage || emptyUsage();
+  const usage = modesFor(point).regular;
   const total = usageTotal(usage);
+  $("#hourlyModes").innerHTML = modeDetail(point);
   $("#hourlyWindowLabel").textContent = formatHourWindow(point.start, new Date(point.start.getTime() + 60 * 60_000));
   totalNode.textContent = formatToken(total);
   totalNode.title = `${fullToken(total)} Total Token`;
@@ -691,7 +723,7 @@ function renderHourlyContext(report, point) {
   costNode.title = hasUsage ? `${formatUSD(estimate.usd)} · ${estimateLabel(estimate)}` : t("hourly.noUsage");
   costNode.classList.remove("loading");
   const reasons = reasonSummary(estimate);
-  $("#hourlyCostNote").textContent = t("hourly.costNote");
+  $("#hourlyCostNote").textContent = `${costModes(estimate)} / ${t("hourly.costNote")}`;
   $("#hourlyCostNote").title = reasons || t("hourly.costNote");
 
   const models = (report?.models || []).filter((item) => usageTotal(item.usage) > 0);
@@ -781,20 +813,21 @@ function renderHourlyLine(points) {
   const max = Math.max(...points.map((point) => usageTotal(point.usage)), 1);
   const coordinates = points.map((point, index) => {
     const x = plot.left + (plot.right - plot.left) * (points.length === 1 ? .5 : index / (points.length - 1));
-    const total = usageTotal(point.usage);
+    const total = usageTotal(modesFor(point).regular);
     const y = total ? plot.bottom - (plot.bottom - plot.top) * total / max : plot.bottom;
     return { point, index, total, x, y };
   });
+  const fastPolyline = coordinates.map(({point,x}) => `${x.toFixed(2)},${(plot.bottom-(plot.bottom-plot.top)*usageTotal(modesFor(point).fast)/max).toFixed(2)}`).join(" ");
   const polyline = coordinates.map(({ x, y }) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
   const area = `M ${coordinates[0].x.toFixed(2)} ${plot.bottom} L ${polyline.replaceAll(",", " ")} L ${coordinates.at(-1).x.toFixed(2)} ${plot.bottom} Z`;
-  line.innerHTML = `<path class="hour-line-area" d="${area}"></path><polyline class="hour-line-path" points="${polyline}"></polyline><line class="hour-selection-guide" id="hourSelectionGuide" x1="0" x2="0" y1="${plot.top}" y2="${plot.bottom}"></line>`;
+  line.innerHTML = `<path class="hour-line-area" d="${area}"></path><polyline class="hour-line-path" points="${polyline}"></polyline><polyline class="hour-line-fast" points="${fastPolyline}"></polyline><line class="hour-selection-guide" id="hourSelectionGuide" x1="0" x2="0" y1="${plot.top}" y2="${plot.bottom}"></line>`;
 
   const availableDates = new Set(points.map((point) => point.date));
   if (!state.hourlyPointDate || !availableDates.has(state.hourlyPointDate)) state.hourlyPointDate = points.at(-1).date;
   pointLayer.innerHTML = coordinates.map(({ point, index, total, x, y }) => {
     const windowLabel = formatHourWindow(point.start, new Date(point.start.getTime() + 60 * 60_000));
     const selected = point.date === state.hourlyPointDate;
-    return `<button class="hour-point pressable ${selected ? "selected" : ""} ${total ? "" : "zero"}" type="button" data-hour-point="${index}" style="left:${(x / 10).toFixed(3)}%;top:${y.toFixed(2)}px" aria-pressed="${selected}" tabindex="${selected ? "0" : "-1"}" aria-label="${escapeHTML(t("hourly.barAria", { time: windowLabel, tokens: fullToken(total) }))}" title="${escapeHTML(t("hourly.barAria", { time: windowLabel, tokens: fullToken(total) }))}"></button>`;
+    return `<button class="hour-point pressable ${selected ? "selected" : ""} ${total ? "" : "zero"}" type="button" data-hour-point="${index}" style="left:${(x / 10).toFixed(3)}%;top:${y.toFixed(2)}px" aria-pressed="${selected}" tabindex="${selected ? "0" : "-1"}" aria-label="${escapeHTML(`${t("hourly.barAria", { time: windowLabel, tokens: fullToken(total) })} / ${modeText(point)}`)}" title="${escapeHTML(`${t("hourly.barAria", { time: windowLabel, tokens: fullToken(total) })} / ${modeText(point)}`)}"></button>`;
   }).join("");
   axis.innerHTML = coordinates.filter(({ index }) => index % 3 === 0 || index === points.length - 1).map(({ point, index, x }) => {
     const clock = formatClock(point.start);
@@ -867,12 +900,18 @@ function switchTrendView(next) {
 }
 
 function renderOverviewSummary(summary) {
-  const total = Number(summary.grand_total ?? summary.usage?.total ?? 0);
+  const modes = modesFor(summary);
+  const total = usageTotal(modes.regular);
   const totalNode = $("#overviewTotal");
   totalNode.textContent = formatToken(total);
   totalNode.title = `${fullToken(total)} Total Token`;
   totalNode.classList.remove("loading");
-  const usage = summary.usage || emptyUsage();
+  const usage = modes.regular;
+  $("#overviewFast").textContent = formatToken(usageTotal(modes.fast));
+  $("#overviewFastShare").textContent = t("mode.share", {share: formatPercent(usageTotal(summary.usage) ? usageTotal(modes.fast) / usageTotal(summary.usage) : 0)});
+  $("#overviewAll").textContent = t("mode.allTokens", {tokens: formatToken(usageTotal(summary.usage))});
+  $("#overviewUnknown").hidden = !usageTotal(modes.unknown);
+  $("#overviewUnknown").textContent = t("mode.unknownNote", {tokens: formatToken(usageTotal(modes.unknown))});
   $("#overviewTokenBreakdown").innerHTML = [
     ["Input", usage.input], ["Cached", usage.cached_input], ["Cache Write", usage.cache_write_input],
     ["Output", usage.output], ["Reasoning", usage.reasoning_output]
@@ -884,6 +923,8 @@ function renderOverviewSummary(summary) {
 function renderOverviewCost(cost) {
   const estimate = cost.summary || {};
   const costNode = $("#overviewCost");
+  $("#overviewCostModes").textContent = costModes(estimate);
+  $("#overviewCostBase").textContent = `${t("mode.costBase", {base: formatUSD(estimate.standard_base_usd || 0), extra: formatUSD(estimate.fast_surcharge_usd || 0)})} / ${t("mode.rulesDate", {date: cost.fast_rules_as_of || ""})}`;
   costNode.textContent = estimateDisplay(estimate);
   costNode.classList.remove("loading");
   $("#overviewCoverage").textContent = estimateLabel(estimate);
@@ -922,7 +963,7 @@ function renderPulse(allPoints) {
     const selected = point.date === state.pulseDate;
     const date = dateFromKey(point.date);
     const label = t("dynamic.dayAria", { date: i18n.formatDate(date, { month: "long", day: "numeric" }), tokens: fullToken(total), estimate: estimateLabel(point.estimate) });
-    return `<button class="pulse-day pressable ${selected ? "selected" : ""} ${total ? "" : "zero"}" type="button" role="option" data-pulse-date="${point.date}" aria-selected="${selected}" tabindex="${selected ? "0" : "-1"}" aria-label="${escapeHTML(label)}"><span class="pulse-bar-space"><i class="pulse-bar" style="--pulse-height:${height}px"></i></span><time datetime="${point.date}">${pad2(date.getMonth() + 1)}/${pad2(date.getDate())}</time></button>`;
+    return `<button class="pulse-day pressable ${selected ? "selected" : ""} ${total ? "" : "zero"}" type="button" role="option" data-pulse-date="${point.date}" aria-selected="${selected}" tabindex="${selected ? "0" : "-1"}" aria-label="${escapeHTML(`${label} / ${modeText(point)}`)}"><span class="pulse-bar-space"><i class="pulse-bar" style="--pulse-height:${Math.max(2,usageTotal(modesFor(point).regular)/max*118)}px"></i><i class="pulse-fast-bar" style="--pulse-height:${usageTotal(modesFor(point).fast)/max*118}px"></i></span><time datetime="${point.date}">${pad2(date.getMonth() + 1)}/${pad2(date.getDate())}</time></button>`;
   }).join("");
   const selectPoint = (date) => {
     state.pulseDate = date;
@@ -963,9 +1004,9 @@ function renderPulseInspector(point) {
   }
   const date = dateFromKey(point.date);
   $("#pulseDate").textContent = i18n.formatDate(date, { month: "long", day: "numeric", weekday: "short" });
-  $("#pulseTotal").textContent = formatToken(usageTotal(point.usage));
-  $("#pulseTotal").title = fullToken(usageTotal(point.usage));
-  $("#pulseIO").textContent = `${formatToken(point.usage?.input)} / ${formatToken(point.usage?.output)}`;
+  $("#pulseTotal").textContent = formatToken(usageTotal(modesFor(point).regular));
+  $("#pulseTotal").title = modeText(point);
+  $("#pulseIO").textContent = `${formatToken(usageTotal(modesFor(point).fast))} / ${formatToken(usageTotal(point.usage))}`;
   $("#pulseCost").textContent = `${estimateDisplay(point.estimate)} · ${formatPercent(point.estimate?.coverage_ratio || 0)}`;
 }
 
@@ -982,7 +1023,7 @@ function renderOverviewModels(models) {
     const total = usageTotal(item.usage);
     const cost = estimateDisplay(item.estimate);
     const coverage = estimateTokens(item.estimate) ? formatPercent(item.estimate.coverage_ratio) : t("dynamic.unpriced");
-    return `<div class="rank-row"><span class="rank-name" title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><span class="rank-signal" aria-hidden="true"><i style="width:${Math.max(1, total / max * 100)}%"></i></span><span class="rank-value" title="${fullToken(total)} Token">${formatToken(total)}<small>${cost} · ${coverage}</small></span></div>`;
+    return `<div class="rank-row"><span class="rank-name" title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><span class="rank-signal" aria-hidden="true"><i style="width:${Math.max(1, total / max * 100)}%"></i></span><span class="rank-value" title="${fullToken(total)} Token">${formatToken(usageTotal(modesFor(item).regular))}<small class="mode-fast">Fast ${formatToken(usageTotal(modesFor(item).fast))}</small><small>${cost} · ${coverage}</small></span></div>`;
   }).join("");
 }
 
@@ -1104,13 +1145,13 @@ function renderCalendar(report) {
     const selected = date === state.selectedDate;
     const hasCost = Number(point.estimate?.priced_tokens || 0) > 0;
     const aria = t("dynamic.calendarDayAria", { day: i18n.formatNumber(day), tokens: fullToken(total), estimate: estimateLabel(point.estimate) });
-    cells.push(`<button class="calendar-day pressable ${selected ? "selected" : ""} ${date === todayKey() ? "today" : ""} ${total ? "" : "zero"}" type="button" role="gridcell" data-calendar-date="${date}" aria-selected="${selected}" tabindex="${selected ? "0" : "-1"}" aria-label="${escapeHTML(aria)}"><span class="day-number">${i18n.formatNumber(day)}</span>${hasCost ? '<i class="cost-marker" aria-hidden="true"></i>' : ""}<span class="day-usage" aria-hidden="true"><i style="--day-strength:${strength}%"></i></span><span class="day-amount">${total ? formatToken(total) : "0"}</span></button>`);
+    cells.push(`<button class="calendar-day pressable ${selected ? "selected" : ""} ${date === todayKey() ? "today" : ""} ${total ? "" : "zero"}" type="button" role="gridcell" data-calendar-date="${date}" aria-selected="${selected}" tabindex="${selected ? "0" : "-1"}" aria-label="${escapeHTML(`${aria} / ${modeText(point)}`)}"><span class="day-number">${i18n.formatNumber(day)}</span>${hasCost ? '<i class="cost-marker" aria-hidden="true"></i>' : ""}<span class="day-usage" aria-hidden="true"><i style="--day-strength:${strength}%"></i></span><span class="day-amount">${formatToken(usageTotal(modesFor(point).regular))}</span><small class="day-fast-amount">Fast ${formatToken(usageTotal(modesFor(point).fast))}</small></button>`);
   }
   while (cells.length % 7) cells.push(`<span class="calendar-blank" aria-hidden="true"></span>`);
   const grid = $("#calendarGrid");
   grid.innerHTML = cells.join("");
   const monthlyTokens = usageTotal(report.summary?.usage) || points.reduce((sum, point) => sum + usageTotal(point.usage), 0);
-  $("#monthSummary").textContent = `${formatToken(monthlyTokens)} Token · ${estimateDisplay(report.summary)}`;
+  $("#monthSummary").textContent = `${modeText({usage: {total: monthlyTokens}, modes: report.modes})} / ${estimateDisplay(report.summary)}`;
   $$('[data-calendar-date]', grid).forEach((button) => {
     button.addEventListener("click", () => selectCalendarDate(button.dataset.calendarDate));
     button.addEventListener("focus", () => selectCalendarDate(button.dataset.calendarDate));
@@ -1164,7 +1205,7 @@ async function loadDailySelection(date) {
 
 function renderDayDetail(point, report, loadingModels = false) {
   const date = dateFromKey(point.date);
-  const usage = point.usage || emptyUsage();
+  const usage = modesFor(point).regular;
   const total = usageTotal(usage);
   const estimate = point.estimate || {};
   const title = i18n.formatDate(date, { month: "long", day: "numeric", weekday: "long" });
@@ -1172,6 +1213,7 @@ function renderDayDetail(point, report, loadingModels = false) {
   $("#selectedDateTitle").dataset.loadedDate = report ? point.date : "";
   $("#selectedDayStatus").textContent = total ? t("dynamic.hasUsage") : t("dynamic.zeroUsage");
   $("#dayTotal").textContent = formatToken(total);
+  $("#dayModes").innerHTML = modeDetail(point);
   $("#dayTotal").title = `${fullToken(total)} Token`;
   const regular = Math.max(0, Number(usage.input || 0) - Number(usage.cached_input || 0) - Number(usage.cache_write_input || 0));
   const parts = [
@@ -1184,7 +1226,8 @@ function renderDayDetail(point, report, loadingModels = false) {
     ["Output", usage.output], ["Reasoning ⊂ Output", usage.reasoning_output]
   ].map(([label, value]) => `<div><dt>${label}</dt><dd title="${fullToken(value)}">${formatToken(value)}</dd></div>`).join("");
   $("#dayCost").textContent = estimateDisplay(estimate);
-  $("#dayCoverage").textContent = estimateLabel(estimate);
+  $("#dayCost").title = costModes(estimate);
+  $("#dayCoverage").textContent = `${estimateLabel(estimate)} · ${costModes(estimate)}`;
   if (loadingModels) {
     $("#dayModels").innerHTML = `<div class="empty-state">${escapeHTML(t("dynamic.modelsLoading"))}</div>`;
     $("#dayModelCount").textContent = "";
@@ -1192,7 +1235,7 @@ function renderDayDetail(point, report, loadingModels = false) {
   }
   const models = report?.models || [];
   $("#dayModelCount").textContent = models.length ? t("common.modelShort", { count: i18n.formatNumber(models.length) }) : "";
-  $("#dayModels").innerHTML = models.length ? models.map((item) => `<div class="mini-model-row"><span title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><strong title="${fullToken(usageTotal(item.usage))}">${formatToken(usageTotal(item.usage))}</strong></div>`).join("") : `<div class="empty-state">${escapeHTML(t("dynamic.noModelsDay"))}</div>`;
+  $("#dayModels").innerHTML = models.length ? models.map((item) => `<div class="mini-model-row"><span title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><strong title="${fullToken(usageTotal(item.usage))}">${formatToken(usageTotal(modesFor(item).regular))}<small class="mode-fast">Fast ${formatToken(usageTotal(modesFor(item).fast))}</small></strong></div>`).join("") : `<div class="empty-state">${escapeHTML(t("dynamic.noModelsDay"))}</div>`;
 }
 
 async function loadBreakdown({ preserve = false } = {}) {
@@ -1273,7 +1316,7 @@ function renderBreakdown(items, dimension) {
     const aria = active
       ? t("dynamic.drillCancelAria", { value: item.key })
       : t("dynamic.drillAria", { value: item.key });
-    return `<div class="breakdown-row"><span class="breakdown-name" title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><span class="breakdown-track" aria-hidden="true"><i style="width:${Math.max(1, totalTokens / max * 100)}%"></i></span><span class="breakdown-value" title="${fullToken(totalTokens)} Token">${formatToken(totalTokens)}</span>${canFilter ? `<button class="breakdown-filter pressable ${active ? "active" : ""}" type="button" data-drill-value="${escapeHTML(item.key)}" title="${escapeHTML(title)}" aria-label="${escapeHTML(aria)}" aria-pressed="${active}">${active ? "×" : "＋"}</button>` : "<span></span>"}</div>`;
+    return `<div class="breakdown-row"><span class="breakdown-name" title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><span class="breakdown-track" aria-hidden="true"><i style="width:${Math.max(1, totalTokens / max * 100)}%"></i></span><span class="breakdown-value" title="${fullToken(totalTokens)} Token">${formatToken(usageTotal(modesFor(item).regular))}<small class="mode-fast">Fast ${formatToken(usageTotal(modesFor(item).fast))}</small></span>${canFilter ? `<button class="breakdown-filter pressable ${active ? "active" : ""}" type="button" data-drill-value="${escapeHTML(item.key)}" title="${escapeHTML(title)}" aria-label="${escapeHTML(aria)}" aria-pressed="${active}">${active ? "×" : "＋"}</button>` : "<span></span>"}</div>`;
   }).join("");
   $$('[data-drill-value]', container).forEach((button) => button.addEventListener("click", () => {
     if (state.filters[dimension] === button.dataset.drillValue) delete state.filters[dimension];
@@ -1291,7 +1334,7 @@ function sessionEstimatePresentation(estimate = {}) {
   const cost = totalEstimateTokens && !pricedTokens ? t("dynamic.unpriced") : estimateDisplay(estimate);
   const partialCoverage = pricedTokens > 0 && Number(estimate.coverage_ratio || 0) < 1
     ? formatPercent(estimate.coverage_ratio) : "";
-  const title = [estimateLabel(estimate), reasonSummary(estimate)].filter(Boolean).join(" · ");
+  const title = [estimateLabel(estimate), costModes(estimate), reasonSummary(estimate), t("mode.costNote")].filter(Boolean).join(" · ");
   return { cost, partialCoverage, title };
 }
 
@@ -1352,7 +1395,7 @@ function renderSessions(items, { estimatesPending = false } = {}) {
     <div class="session-cell"><span title="${escapeHTML(item.project_path || t("common.notRecorded"))}">${escapeHTML(shortPath(item.project_path))}</span><small title="${escapeHTML(item.project_path || "")}">${escapeHTML(item.project_path || t("common.notRecorded"))}</small></div>
     <div class="session-cell"><strong title="${escapeHTML(item.model || t("common.unknownModel"))}">${escapeHTML(item.model || t("common.unknownModel"))}</strong><span>${escapeHTML(item.source || t("common.unknownSource"))}</span></div>
     <div class="session-cell"><span class="agent-badge">${escapeHTML(item.agent_type || "main")}</span><span class="confidence-badge ${escapeHTML(item.confidence)}">${confidenceLabel(item.confidence)}</span></div>
-    <div class="session-metric session-token" title="${fullToken(usageTotal(item.usage))} Token"><small class="session-mobile-label">Token</small><strong>${formatToken(usageTotal(item.usage))}</strong></div>
+    <div class="session-metric session-token" title="${fullToken(usageTotal(item.usage))} Token"><small class="session-mobile-label">${t("mode.regularTokens")}</small><strong>${formatToken(usageTotal(modesFor(item).regular))}</strong><div class="mode-row-detail">${modeDetail(item,true)}</div></div>
     ${costCell}
     <div class="session-cell"><span>${escapeHTML(localTime(item.last_usage))}</span></div>
     <button class="session-filter pressable ${active ? "active" : ""}" type="button" data-session-filter="${escapeHTML(item.session_id)}" aria-pressed="${active}">${escapeHTML(t(active ? "details.cancelSessionFilter" : "details.onlySession"))}</button>

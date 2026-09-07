@@ -93,6 +93,13 @@ func (s *Scanner) Scan(ctx context.Context, homes []string, rebuild bool) (ScanR
 		result.Warnings++
 		_ = s.Store.AddWarning(ctx, changed.Kind, changed.Path, changed.Error())
 	}
+	if err == nil {
+		for _, rawHome := range homes {
+			if home, e := canonicalPath(rawHome); e == nil {
+				s.scanDiagnosticModes(ctx, home)
+			}
+		}
+	}
 	result.ElapsedMillis = time.Since(started).Milliseconds()
 	return result, err
 }
@@ -210,6 +217,7 @@ func (s *Scanner) scanFile(ctx context.Context, home, path string, meta model.Se
 		if cursor.Offset >= info.Size() && cursor.Size == info.Size() &&
 			!pendingForkReplay &&
 			cursor.ModifiedNanos == info.ModTime().UnixNano() {
+			_ = s.backfillJSONLModes(ctx, home, path, cursor)
 			if err := s.Store.ClearResolvedFileWarnings(ctx, path); err != nil {
 				return result, err
 			}
@@ -300,6 +308,9 @@ func (s *Scanner) scanFile(ctx context.Context, home, path string, meta model.Se
 			return result, nil
 		}
 	}
+	if exists {
+		_ = s.backfillJSONLModes(ctx, home, path, cursor)
+	}
 	if cursor.SessionID != "" {
 		if err := s.inheritSessionProgress(ctx, &cursor); err != nil {
 			return result, err
@@ -372,6 +383,9 @@ func (s *Scanner) scanFile(ctx context.Context, home, path string, meta model.Se
 	if err := s.Store.PutCursor(ctx, cursor); err != nil {
 		return result, err
 	}
+	if !exists {
+		_ = s.Store.MarkModeFileChecked(ctx, path)
+	}
 	if cursor.SessionID != "" {
 		session := meta
 		session.SessionID = cursor.SessionID
@@ -410,9 +424,10 @@ type sessionMetaPayload struct {
 }
 
 type turnContextPayload struct {
-	TurnID string `json:"turn_id"`
-	Cwd    string `json:"cwd"`
-	Model  string `json:"model"`
+	ServiceTier json.RawMessage `json:"service_tier"`
+	TurnID      string          `json:"turn_id"`
+	Cwd         string          `json:"cwd"`
+	Model       string          `json:"model"`
 }
 
 type eventPayload struct {
@@ -541,6 +556,14 @@ func (s *Scanner) processRecord(
 		cursor.TurnID = firstNonEmpty(payload.TurnID, cursor.TurnID)
 		cursor.Model = firstNonEmpty(payload.Model, cursor.Model, meta.Model)
 		cursor.ProjectPath = firstNonEmpty(payload.Cwd, cursor.ProjectPath, meta.ProjectPath)
+		if len(payload.ServiceTier) > 0 && string(payload.ServiceTier) != "null" && payload.TurnID != "" {
+			var tier string
+			if json.Unmarshal(payload.ServiceTier, &tier) == nil {
+				if err := s.Store.PutTurnModes(ctx, []store.TurnMode{{Home: home, SessionID: cursor.SessionID, TurnID: payload.TurnID, Mode: model.ModeFromTier(tier, "jsonl_turn_context")}}); err != nil {
+					return err
+				}
+			}
+		}
 		return nil
 	case "event_msg":
 		var payload eventPayload

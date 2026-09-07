@@ -18,6 +18,10 @@ type UnpricedReason struct {
 }
 
 type Estimate struct {
+	RegularModeUSD     string           `json:"regular_mode_usd"`
+	FastModeUSD        string           `json:"fast_mode_usd"`
+	StandardBaseUSD    string           `json:"standard_base_usd"`
+	FastSurchargeUSD   string           `json:"fast_surcharge_usd"`
 	USD                string           `json:"usd"`
 	RegularInputUSD    string           `json:"regular_input_usd"`
 	CachedInputUSD     string           `json:"cached_input_usd"`
@@ -30,6 +34,7 @@ type Estimate struct {
 }
 
 type ReportPoint struct {
+	Modes    model.ModeUsage  `json:"modes"`
 	Date     string           `json:"date"`
 	Time     time.Time        `json:"time"`
 	Usage    model.TokenUsage `json:"usage"`
@@ -37,22 +42,26 @@ type ReportPoint struct {
 }
 
 type ModelEstimate struct {
+	Modes    model.ModeUsage  `json:"modes"`
 	Key      string           `json:"key"`
 	Usage    model.TokenUsage `json:"usage"`
 	Estimate Estimate         `json:"estimate"`
 }
 
 type Report struct {
-	Basis       string          `json:"basis"`
-	Currency    string          `json:"currency"`
-	CatalogAsOf string          `json:"catalog_as_of"`
-	Bucket      string          `json:"bucket"`
-	Summary     Estimate        `json:"summary"`
-	Points      []ReportPoint   `json:"points"`
-	Models      []ModelEstimate `json:"models"`
+	FastRulesAsOf string          `json:"fast_rules_as_of"`
+	Modes         model.ModeUsage `json:"modes"`
+	Basis         string          `json:"basis"`
+	Currency      string          `json:"currency"`
+	CatalogAsOf   string          `json:"catalog_as_of"`
+	Bucket        string          `json:"bucket"`
+	Summary       Estimate        `json:"summary"`
+	Points        []ReportPoint   `json:"points"`
+	Models        []ModelEstimate `json:"models"`
 }
 
 type Builder struct {
+	basis     string
 	overrides map[string]Override
 	summary   aggregate
 	points    map[string]*aggregate
@@ -60,27 +69,31 @@ type Builder struct {
 }
 
 type aggregate struct {
-	usage          model.TokenUsage
-	regularNano    int64
-	cachedNano     int64
-	cacheWriteNano int64
-	outputNano     int64
-	totalNano      int64
-	pricedTokens   int64
-	unpricedTokens int64
-	totalTokens    int64
-	reasons        map[string]UnpricedReason
+	modes                                                  model.ModeUsage
+	regularModeNano, fastModeNano, baseNano, surchargeNano int64
+	usage                                                  model.TokenUsage
+	regularNano                                            int64
+	cachedNano                                             int64
+	cacheWriteNano                                         int64
+	outputNano                                             int64
+	totalNano                                              int64
+	pricedTokens                                           int64
+	unpricedTokens                                         int64
+	totalTokens                                            int64
+	reasons                                                map[string]UnpricedReason
 }
 
 type evaluatedEvent struct {
-	usage          model.TokenUsage
-	regularNano    int64
-	cachedNano     int64
-	cacheWriteNano int64
-	outputNano     int64
-	pricedTokens   int64
-	unpricedTokens int64
-	reasons        []UnpricedReason
+	mode                    string
+	baseNano, surchargeNano int64
+	usage                   model.TokenUsage
+	regularNano             int64
+	cachedNano              int64
+	cacheWriteNano          int64
+	outputNano              int64
+	pricedTokens            int64
+	unpricedTokens          int64
+	reasons                 []UnpricedReason
 }
 
 func NewBuilder(overrides map[string]Override) (*Builder, error) {
@@ -89,14 +102,14 @@ func NewBuilder(overrides map[string]Override) (*Builder, error) {
 		return nil, err
 	}
 	return &Builder{
-		overrides: normalized,
-		points:    map[string]*aggregate{},
-		models:    map[string]*aggregate{},
+		overrides: normalized, basis: Basis,
+		points: map[string]*aggregate{},
+		models: map[string]*aggregate{},
 	}, nil
 }
 
 func (b *Builder) Add(event model.UsageEvent) error {
-	evaluated, err := evaluateEvent(event, b.overrides)
+	evaluated, err := evaluateWithBasis(event, b.overrides, b.basis)
 	if err != nil {
 		return err
 	}
@@ -144,12 +157,12 @@ func (b *Builder) Report() Report {
 		pointTime, _ := time.ParseInLocation("2006-01-02", key, time.UTC)
 		points = append(points, ReportPoint{
 			Date: key, Time: pointTime,
-			Usage: item.usage, Estimate: item.estimate(),
+			Usage: item.usage, Modes: item.modes, Estimate: item.estimate(),
 		})
 	}
 	models := make([]ModelEstimate, 0, len(b.models))
 	for key, item := range b.models {
-		models = append(models, ModelEstimate{Key: key, Usage: item.usage, Estimate: item.estimate()})
+		models = append(models, ModelEstimate{Key: key, Usage: item.usage, Modes: item.modes, Estimate: item.estimate()})
 	}
 	sort.Slice(models, func(i, j int) bool {
 		if models[i].Usage.Total == models[j].Usage.Total {
@@ -158,7 +171,7 @@ func (b *Builder) Report() Report {
 		return models[i].Usage.Total > models[j].Usage.Total
 	})
 	return Report{
-		Basis: Basis, Currency: Currency, CatalogAsOf: CatalogAsOf, Bucket: "day",
+		Basis: b.basis, FastRulesAsOf: FastRulesAsOf, Modes: b.summary.modes, Currency: Currency, CatalogAsOf: CatalogAsOf, Bucket: "day",
 		Summary: b.summary.estimate(), Points: points, Models: models,
 	}
 }
@@ -349,6 +362,20 @@ func (a *aggregate) add(event evaluatedEvent) error {
 	if a.totalNano, err = checkedAdd(a.totalNano, eventNano); err != nil {
 		return err
 	}
+	a.modes.Add(event.usage, event.mode)
+	modeAmount := &a.regularModeNano
+	if event.mode == model.ModeFast {
+		modeAmount = &a.fastModeNano
+	}
+	if *modeAmount, err = checkedAdd(*modeAmount, eventNano); err != nil {
+		return err
+	}
+	if a.baseNano, err = checkedAdd(a.baseNano, event.baseNano); err != nil {
+		return err
+	}
+	if a.surchargeNano, err = checkedAdd(a.surchargeNano, event.surchargeNano); err != nil {
+		return err
+	}
 	if a.pricedTokens, err = checkedAdd(a.pricedTokens, event.pricedTokens); err != nil {
 		return err
 	}
@@ -397,6 +424,7 @@ func (a aggregate) estimate() Estimate {
 		return reasons[i].Tokens > reasons[j].Tokens
 	})
 	return Estimate{
+		RegularModeUSD: formatNanoUSD(a.regularModeNano), FastModeUSD: formatNanoUSD(a.fastModeNano), StandardBaseUSD: formatNanoUSD(a.baseNano), FastSurchargeUSD: formatNanoUSD(a.surchargeNano),
 		USD: formatNanoUSD(a.totalNano), RegularInputUSD: formatNanoUSD(a.regularNano),
 		CachedInputUSD: formatNanoUSD(a.cachedNano), CacheWriteInputUSD: formatNanoUSD(a.cacheWriteNano),
 		OutputUSD: formatNanoUSD(a.outputNano), PricedTokens: a.pricedTokens,

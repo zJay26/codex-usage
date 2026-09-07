@@ -25,7 +25,7 @@
 
 每台电脑安装一次，之后打开浏览器就能查看总量、每日趋势、模型和项目分布；Session 明细可以直接搜索，并显示每段 Session 的 API 等价费用。页面会自动跟进本机后续产生的用量。
 
-所有统计都留在当前电脑上；它不读取 prompt、回复、工具输出或 `auth.json`。费用只是按公开 API 单价做的等价估算，不是 OpenAI 账单或账号配额。
+所有统计都留在当前电脑上；不保存 prompt、回复或工具输出，也不读取 `auth.json`。程序仅提取用量和模式元数据，跳过诊断记录中的对话字符串。费用按公开 API 单价及 Fast 额度倍率做等价估算，不是 OpenAI 账单或账号配额。
 
 ## 直接安装
 
@@ -71,6 +71,7 @@ Linux 服务器没有桌面环境时，程序会打印 SSH 隧道命令。在自
 |---|---|
 | 逐电脑归属 | 每台电脑独立统计，清楚区分公司电脑、家用电脑、Windows、WSL 或 Linux |
 | 历史与自动更新 | 安装后先整理已有记录，后续用量自动进入 Dashboard |
+| 常规与 Fast | 按 turn 区分模式，以常规 token 为主；Fast 单独显示，模式未确认部分注明暂按常规统计 |
 | Session 搜索与筛选 | 按 Thread、Session ID、项目、模型或来源搜索；快捷筛选再次点击即可取消 |
 | 每日下钻 | 查看连续趋势、月历、零用量日和任意一天的模型构成 |
 | 多维明细 | 按模型、Token 类型、来源、项目、Thread、Session 和 Agent 理解用量 |
@@ -81,11 +82,11 @@ Linux 服务器没有桌面环境时，程序会打印 SSH 隧道命令。在自
 
 ## 范围与边界
 
-| 会统计 | 不会统计或读取 |
+| 会统计 | 不会统计或保存 |
 |---|---|
 | 当前电脑的 Token、模型、来源、项目、Thread、Session、Agent 和自然日 | 账号在其他电脑上的用量 |
 | 本机已有以及之后新增的 Codex session 用量记录 | 账号配额、订阅余额或真实账单 |
-| 按 Standard API 文本价格计算的等价费用和定价覆盖率 | prompt、回复、reasoning 内容、工具输出或 `auth.json` |
+| 按 Standard API 文本价格与 Fast 额度倍率折算的费用和定价覆盖率 | prompt、回复、reasoning 内容、工具输出或 `auth.json` |
 | 重复、回退、坏记录和文件重建等数据质量提示 | 云同步、远程遥测或第三方分析 |
 
 > “电脑”指运行 Codex 客户端和 codex-usage 的主机，不是 shell 或 tool 实际执行的远程环境。Codex 官方 `/usage` 查看账号级活动；codex-usage 补充当前电脑上的详细归属。
@@ -145,7 +146,9 @@ Dashboard 固定为“概览 / 每日 / 明细”三个一级视图。概览默�
 
 页头“显示设置”默认采用更舒适的字号层级，并可即时调整字体大小、显示密度、颜色主题、界面动效和语言。所有显示偏好只保存在当前浏览器，不会影响统计数据或导出结果。
 
-### 5. Standard API 等价成本
+### 5. API 等价成本（含 Fast 折算）
+
+Dashboard 展示常规、Fast 和全部 token，并提供模式筛选。Fast 原始 token 不乘倍率；费用按 Standard 基价乘 ChatGPT Codex 额度倍率：Astra、GPT-5.6 系列、GPT-5.5 为 2.5 倍，GPT-5.4 为 2 倍。未知倍率的型号保留为未定价。历史模式仅凭同一 turn 的明确证据补齐，未确认部分暂归常规。详见 [Fast 模式口径、历史补齐与接口说明](docs/fast-mode-accounting.md)。
 
 费用在查询时流式读取已经过去重、归属规则筛选后的规范事件，不写入 SQLite，也不会改变原有 Token 统计。计算使用定点 nano-USD：Cached Input 与 Cache Write 从 Input 中扣除，Reasoning 已包含在 Output 中，不会重复收费。
 
@@ -163,7 +166,7 @@ Dashboard 固定为“概览 / 每日 / 明细”三个一级视图。概览默�
 | [GPT-5.3-Codex](https://developers.openai.com/api/docs/models/gpt-5.3-codex) | 1.75 | 0.175 | 未公开 | 14.00 |
 | [GPT-5.2-Codex](https://developers.openai.com/api/docs/models/gpt-5.2-codex) | 1.75 | 0.175 | 未公开 | 14.00 |
 
-GPT-6 Astra 和 GPT-5.6 的 Cache Write 使用官方“普通 Input 的 1.25 倍”规则。本机 JSONL 保存的是累计 Token 活动，不能可靠还原 API 账单中的逐请求边界，因此工具统一展示上表 Standard 基础单价的等价值，不推断长上下文倍率。页面始终同时展示费用和 Token 定价覆盖率，未知模型不会被当成零费用。
+GPT-6 Astra 和 GPT-5.6 的 Cache Write 使用官方“普通 Input 的 1.25 倍”规则。本机 JSONL 保存的是累计 Token 活动，不能可靠还原 API 账单中的逐请求边界；估算采用上表 Standard 基价，并对明确 Fast 的用量折算，不推断长上下文倍率。页面始终同时展示费用和 Token 定价覆盖率，未知模型不会被当成零费用。
 
 内部模型可以在 Dashboard 的“定价设置”中映射到一个明确的内置公开模型，或填写自定义单价。等价配置如下，保存后无需重启：
 
@@ -222,7 +225,7 @@ Dashboard 支持 `?lang=en|zh-CN` 和页头语言按钮；URL 参数优先于已
 - 不保存 Codex 账号 ID
 - 不使用 CDN，页面资源全部离线内嵌
 - 不监听 `127.0.0.1` 以外的地址
-- 不读取 OpenAI 真实账单或 ChatGPT rate-limit / 账号配额；只提供当前电脑的 Standard API 等价成本估算
+- 不读取 OpenAI 真实账单或 ChatGPT rate-limit / 账号配额；只提供当前电脑的 API 等价成本估算（含 Fast 折算）
 - 定价目录随二进制嵌入，运行时不会为费用功能访问外部网络
 
 本机完整项目路径和 Thread 标题会用于归属视图，因此导出的 JSON/CSV 也可能包含这些本机信息。

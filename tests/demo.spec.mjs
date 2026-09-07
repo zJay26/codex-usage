@@ -90,6 +90,25 @@ test("Pages subpath loads the canonical UI with synthetic-only APIs", async ({ p
   await expect(page.locator("#exportCsv")).toHaveAttribute("href", /^data:text\/csv/);
 });
 
+test("synthetic modes, Fast pricing, and export follow the accounting contract", async ({page}) => {
+  await page.goto(`${baseURL}?lang=en`, {waitUntil:"networkidle"});
+  const result = await page.evaluate(async () => {
+    const api = async (path) => (await fetch(`api/v1/${path}`)).json();
+    const all = await api("summary"), fast = await api("summary?mode=fast"), regular = await api("summary?mode=regular"), unknown = await api("summary?mode=unknown");
+    const basic = await api("cost-estimate?model=gpt-5.4&mode=fast");
+    const weighted = await api("cost-estimate?model=gpt-5.4&mode=fast&cost_basis=codex_fast_weighted");
+    const exported = await api("export?mode=fast");
+    return {all,fast,regular,unknown,basic,weighted,exported};
+  });
+  expect(result.regular.usage.total+result.fast.usage.total).toBe(result.all.usage.total);
+  expect(result.unknown.usage.total).toBe(result.regular.modes.unknown.total);
+  expect(result.fast.modes.regular.total).toBe(0);
+  expect(Number(result.weighted.summary.usd)).toBeCloseTo(Number(result.basic.summary.usd)*2,6);
+  expect(result.weighted.summary.reasons.some((reason)=>reason.kind==="cache_write_rate_missing")).toBeTruthy();
+  expect(result.exported.length).toBeGreaterThan(0);
+  expect(result.exported.every((row)=>row.service_mode==="fast"&&!row.mode_assumed)).toBeTruthy();
+});
+
 test("language priority, persistence, ARIA, pricing, scan, theme, and mobile layout work", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("codex-usage-locale", "zh-CN"));
   await page.goto(`${baseURL}?lang=en`, { waitUntil: "networkidle" });

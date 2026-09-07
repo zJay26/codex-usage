@@ -91,6 +91,7 @@ func (u TokenUsage) String() string {
 }
 
 type UsageEvent struct {
+	ServiceMode
 	ID          string     `json:"id"`
 	Timestamp   time.Time  `json:"timestamp,omitempty"`
 	LocalDate   string     `json:"local_date,omitempty"`
@@ -147,6 +148,8 @@ type Warning struct {
 }
 
 type Filter struct {
+	Mode       string
+	CostBasis  string
 	Since      time.Time
 	Until      time.Time
 	SinceDate  string
@@ -161,6 +164,7 @@ type Filter struct {
 }
 
 type Summary struct {
+	Modes              ModeUsage  `json:"modes"`
 	Usage              TokenUsage `json:"usage"`
 	Unattributed       TokenUsage `json:"unattributed"`
 	GrandTotal         int64      `json:"grand_total"`
@@ -172,12 +176,14 @@ type Summary struct {
 }
 
 type Point struct {
+	Modes ModeUsage  `json:"modes"`
 	Time  time.Time  `json:"time"`
 	Date  string     `json:"date,omitempty"`
 	Usage TokenUsage `json:"usage"`
 }
 
 type BreakdownItem struct {
+	Modes    ModeUsage  `json:"modes"`
 	Key      string     `json:"key"`
 	Usage    TokenUsage `json:"usage"`
 	Events   int64      `json:"events"`
