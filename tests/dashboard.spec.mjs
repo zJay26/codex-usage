@@ -143,7 +143,7 @@ test("overview is calm, local-only, and exposes honest cost coverage", async ({ 
   await trend.getByRole("tab", { name: "每小时" }).click();
   await expect(trend.getByRole("heading", { name: "每小时Token用量" })).toBeVisible();
   await expect(trend.getByRole("tab", { name: "每小时" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator("#view-overview").getByText("API 等价成本（含 Fast 折算）", { exact: true })).toBeVisible();
+  await expect(page.locator("#view-overview").getByText("API 等价成本", { exact: true })).toBeVisible();
   await expect(page.locator("#machineId")).not.toHaveText("—");
   await expect(page.locator("#overviewCoverage")).toContainText("已定价 100.0% Token");
   const styleIntegrity = await page.evaluate(() => ({
@@ -188,7 +188,7 @@ test("hourly usage inspects the selected point and navigates across local days",
   await expect(page.locator("#hourlyCost")).toHaveText(/^\$/);
   await expect(page.locator("#hourlyModels").getByText("gpt-5.4", { exact: true })).toBeVisible();
   await expect(page.locator("#hourlyCostCoverage")).toHaveText("100.0%");
-  await expect(page.locator("#hourlyContext").getByText("不是真实账单", { exact: false })).toBeVisible();
+  await expect(page.locator("#hourlyCostNote")).toContainText("Fast");
   const summaryType = await page.evaluate(() => ({
     window: Number.parseFloat(getComputedStyle(document.querySelector("#hourlyWindowLabel")).fontSize),
     ledger: Number.parseFloat(getComputedStyle(document.querySelector("#hourlyInput")).fontSize)
@@ -688,15 +688,14 @@ test("Fast tokens, mode filters, weighted costs and responsive presentation agre
   page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize({width:1440,height:1100});
   await page.goto(dashboardURL, {waitUntil:"networkidle"});
-  await expect(page.locator("#overviewTotal")).toHaveText("100");
-  await expect(page.locator("#overviewFast")).toHaveText("60");
-  await expect(page.locator("#overviewAll")).toContainText("160");
-  await expect(page.locator("#overviewUnknown")).toContainText("100");
+  await expect(page.locator("#overviewTotal")).toHaveText("160");
+  await expect(page.locator("#overviewTokenModes")).toHaveText(/100.*Fast 60/);
+  await expect(page.locator("#overviewUnknown, .mode-unknown, .mode-cost-details")).toHaveCount(0);
+  await expect(page.locator("#overviewCostNote")).toContainText("2026");
   const report = await (await page.request.get(`${baseURL}/api/v1/cost-estimate?cost_basis=codex_fast_weighted`)).json();
   expect(Number(report.summary.fast_mode_usd)).toBeCloseTo(.0008,9);
   expect(Number(report.summary.regular_mode_usd)).toBeCloseTo(.000455,9);
   expect(report.modes.regular.total+report.modes.fast.total).toBe(160);
-  await page.locator(".mode-cost-details summary").click();
   await page.screenshot({path:testInfo.outputPath("fast-desktop.png"),fullPage:true});
   await page.evaluate(() => document.documentElement.dataset.theme="dark");
   await page.screenshot({path:testInfo.outputPath("fast-dark.png"),fullPage:true});
@@ -706,14 +705,18 @@ test("Fast tokens, mode filters, weighted costs and responsive presentation agre
   await page.setViewportSize({width:1440,height:1100});
   await page.locator('.primary-nav [data-view="details"]').click();
   await expect(page.locator("#sessionRows .mode-fast").first()).toContainText("60");
+  await expect(page.locator("#sessionRows .session-token > strong").first()).toHaveText("160");
+  await expect(page.locator("#detailBreakdown .breakdown-value").first()).toHaveText(/160.*Fast 60/);
   await page.screenshot({path:testInfo.outputPath("fast-details.png"),fullPage:true});
   await page.locator('.primary-nav [data-view="daily"]').click();
   await expect(page.locator("#dayModes")).toContainText("60");
   await page.screenshot({path:testInfo.outputPath("fast-calendar.png"),fullPage:true});
   await page.locator('.primary-nav [data-view="overview"]').click();
-  await page.locator("#overviewUnknown").click();
-  await expect(page.locator("#overviewFast")).toHaveText("0");
-  await expect(page.locator("#filterMode")).toHaveValue("unknown");
+  await page.locator("#filterButton").click();
+  await page.locator("#filterMode").selectOption("regular");
+  await page.locator("#applyFilters").click();
+  await expect(page.locator("#overviewTotal")).toHaveText("100");
+  await expect(page.locator("#overviewTokenModes")).toHaveText(/100.*Fast 0/);
   expect((await (await page.request.get(`${baseURL}/api/v1/export?mode=fast`)).json()).every(row=>row.service_mode==="fast"&&!row.mode_assumed)).toBeTruthy();
   expect(errors).toEqual([]);
 });

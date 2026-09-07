@@ -350,11 +350,17 @@ function modesFor(row = {}) {
 }
 function modeText(row = {}) {
   const m = modesFor(row);
-  return `${t("mode.regular")} ${formatToken(usageTotal(m.regular))} / Fast ${formatToken(usageTotal(m.fast))}`;
+  return `${t("mode.totalTokens")} ${formatToken(usageTotal(row.usage))} / Fast ${formatToken(usageTotal(m.fast))}`;
 }
 function modeDetail(row = {}, compact = false) {
-  const m = modesFor(row), unknown = usageTotal(m.unknown);
-  return `<span class="mode-fast">Fast <b>${formatToken(usageTotal(m.fast))}</b></span>${compact ? "" : `<span>${t("mode.allTokens", { tokens: formatToken(usageTotal(row.usage)) })}</span>`}${unknown ? `<button type="button" class="text-button mode-unknown pressable" data-mode-filter="unknown" title="${escapeHTML(t("mode.unknownNote", {tokens: fullToken(unknown)}))}">${escapeHTML(t(compact ? "mode.unknownShort" : "mode.unknownNote", {tokens: formatToken(unknown)}))}</button>` : ""}`;
+  const m = modesFor(row);
+  const fast = `<span class="mode-fast">Fast <b>${formatToken(usageTotal(m.fast))}</b></span>`;
+  return compact ? fast : `<span>${t("mode.regular")} ${formatToken(usageTotal(m.regular))}</span> / ${fast}`;
+}
+function costRulesDate(report = {}) {
+  const date = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value || "")
+    ? i18n.formatDate(dateFromKey(value), {year: "numeric", month: "long", day: "numeric"}) : "—";
+  return t("mode.ruleDates", {apiDate: date(report.catalog_as_of), fastDate: date(report.fast_rules_as_of)});
 }
 function costModes(estimate = {}) {
   return `${t("mode.regular")} ${formatUSD(estimate.regular_mode_usd ?? estimate.usd ?? 0)} / Fast ${formatUSD(estimate.fast_mode_usd || 0)}`;
@@ -411,10 +417,6 @@ async function loadStatus() {
   const payload = await api("/api/v1/status");
   state.status = payload;
   const status = payload.status || {};
-  const progress = status.mode_backfill || [];
-  const pending = progress.some((p) => p.state === "pending"), unavailable = progress.some((p) => p.state === "unavailable");
-  $("#modeBackfillNote").hidden = !pending && !unavailable;
-  $("#modeBackfillNote").textContent = t(pending ? "mode.backfill" : "mode.unavailable");
   const revision = status.data_revision == null ? null : String(status.data_revision);
   const changed = state.dataRevision !== null && revision !== null && revision !== state.dataRevision;
   if (changed) {
@@ -691,7 +693,7 @@ function renderHourlySelection(point) {
     $("#hourlyLedger").innerHTML = `<span class="hourly-placeholder">${escapeHTML(t("dynamic.hourlyEmpty"))}</span>`;
     return;
   }
-  const usage = modesFor(point).regular;
+  const usage = point.usage || emptyUsage();
   const total = usageTotal(usage);
   $("#hourlyModes").innerHTML = modeDetail(point);
   $("#hourlyWindowLabel").textContent = formatHourWindow(point.start, new Date(point.start.getTime() + 60 * 60_000));
@@ -723,8 +725,8 @@ function renderHourlyContext(report, point) {
   costNode.title = hasUsage ? `${formatUSD(estimate.usd)} · ${estimateLabel(estimate)}` : t("hourly.noUsage");
   costNode.classList.remove("loading");
   const reasons = reasonSummary(estimate);
-  $("#hourlyCostNote").textContent = `${costModes(estimate)} / ${t("hourly.costNote")}`;
-  $("#hourlyCostNote").title = reasons || t("hourly.costNote");
+  $("#hourlyCostNote").textContent = `${costModes(estimate)}`;
+  $("#hourlyCostNote").title = reasons || costRulesDate(report);
 
   const models = (report?.models || []).filter((item) => usageTotal(item.usage) > 0);
   const visibleModels = models.slice(0, 3);
@@ -813,7 +815,7 @@ function renderHourlyLine(points) {
   const max = Math.max(...points.map((point) => usageTotal(point.usage)), 1);
   const coordinates = points.map((point, index) => {
     const x = plot.left + (plot.right - plot.left) * (points.length === 1 ? .5 : index / (points.length - 1));
-    const total = usageTotal(modesFor(point).regular);
+    const total = usageTotal(point.usage);
     const y = total ? plot.bottom - (plot.bottom - plot.top) * total / max : plot.bottom;
     return { point, index, total, x, y };
   });
@@ -900,18 +902,13 @@ function switchTrendView(next) {
 }
 
 function renderOverviewSummary(summary) {
-  const modes = modesFor(summary);
-  const total = usageTotal(modes.regular);
+  const total = usageTotal(summary.usage);
   const totalNode = $("#overviewTotal");
   totalNode.textContent = formatToken(total);
   totalNode.title = `${fullToken(total)} Total Token`;
   totalNode.classList.remove("loading");
-  const usage = modes.regular;
-  $("#overviewFast").textContent = formatToken(usageTotal(modes.fast));
-  $("#overviewFastShare").textContent = t("mode.share", {share: formatPercent(usageTotal(summary.usage) ? usageTotal(modes.fast) / usageTotal(summary.usage) : 0)});
-  $("#overviewAll").textContent = t("mode.allTokens", {tokens: formatToken(usageTotal(summary.usage))});
-  $("#overviewUnknown").hidden = !usageTotal(modes.unknown);
-  $("#overviewUnknown").textContent = t("mode.unknownNote", {tokens: formatToken(usageTotal(modes.unknown))});
+  const usage = summary.usage || emptyUsage();
+  $("#overviewTokenModes").innerHTML = modeDetail(summary);
   $("#overviewTokenBreakdown").innerHTML = [
     ["Input", usage.input], ["Cached", usage.cached_input], ["Cache Write", usage.cache_write_input],
     ["Output", usage.output], ["Reasoning", usage.reasoning_output]
@@ -924,15 +921,13 @@ function renderOverviewCost(cost) {
   const estimate = cost.summary || {};
   const costNode = $("#overviewCost");
   $("#overviewCostModes").textContent = costModes(estimate);
-  $("#overviewCostBase").textContent = `${t("mode.costBase", {base: formatUSD(estimate.standard_base_usd || 0), extra: formatUSD(estimate.fast_surcharge_usd || 0)})} / ${t("mode.rulesDate", {date: cost.fast_rules_as_of || ""})}`;
   costNode.textContent = estimateDisplay(estimate);
   costNode.classList.remove("loading");
   $("#overviewCoverage").textContent = estimateLabel(estimate);
   $("#overviewCoverageBar").style.width = `${Math.max(0, Math.min(100, Number(estimate.coverage_ratio || 0) * 100))}%`;
   const reasons = reasonSummary(estimate);
-  $("#overviewCostNote").textContent = reasons
-    ? t("dynamic.uncovered", { reasons })
-    : t("dynamic.catalogAsOf", { date: cost.catalog_as_of || "—" });
+  $("#overviewCostNote").textContent = costRulesDate(cost);
+  $("#overviewCostNote").title = reasons;
   renderPulse(cost.points || []);
   renderOverviewModels(cost.models || []);
 }
@@ -963,7 +958,7 @@ function renderPulse(allPoints) {
     const selected = point.date === state.pulseDate;
     const date = dateFromKey(point.date);
     const label = t("dynamic.dayAria", { date: i18n.formatDate(date, { month: "long", day: "numeric" }), tokens: fullToken(total), estimate: estimateLabel(point.estimate) });
-    return `<button class="pulse-day pressable ${selected ? "selected" : ""} ${total ? "" : "zero"}" type="button" role="option" data-pulse-date="${point.date}" aria-selected="${selected}" tabindex="${selected ? "0" : "-1"}" aria-label="${escapeHTML(`${label} / ${modeText(point)}`)}"><span class="pulse-bar-space"><i class="pulse-bar" style="--pulse-height:${Math.max(2,usageTotal(modesFor(point).regular)/max*118)}px"></i><i class="pulse-fast-bar" style="--pulse-height:${usageTotal(modesFor(point).fast)/max*118}px"></i></span><time datetime="${point.date}">${pad2(date.getMonth() + 1)}/${pad2(date.getDate())}</time></button>`;
+    return `<button class="pulse-day pressable ${selected ? "selected" : ""} ${total ? "" : "zero"}" type="button" role="option" data-pulse-date="${point.date}" aria-selected="${selected}" tabindex="${selected ? "0" : "-1"}" aria-label="${escapeHTML(`${label} / ${modeText(point)}`)}"><span class="pulse-bar-space"><i class="pulse-bar" style="--pulse-height:${Math.max(2,usageTotal(point.usage)/max*118)}px"></i><i class="pulse-fast-bar" style="--pulse-height:${usageTotal(modesFor(point).fast)/max*118}px"></i></span><time datetime="${point.date}">${pad2(date.getMonth() + 1)}/${pad2(date.getDate())}</time></button>`;
   }).join("");
   const selectPoint = (date) => {
     state.pulseDate = date;
@@ -1004,9 +999,9 @@ function renderPulseInspector(point) {
   }
   const date = dateFromKey(point.date);
   $("#pulseDate").textContent = i18n.formatDate(date, { month: "long", day: "numeric", weekday: "short" });
-  $("#pulseTotal").textContent = formatToken(usageTotal(modesFor(point).regular));
+  $("#pulseTotal").textContent = formatToken(usageTotal(point.usage));
   $("#pulseTotal").title = modeText(point);
-  $("#pulseIO").textContent = `${formatToken(usageTotal(modesFor(point).fast))} / ${formatToken(usageTotal(point.usage))}`;
+  $("#pulseIO").textContent = formatToken(usageTotal(modesFor(point).fast));
   $("#pulseCost").textContent = `${estimateDisplay(point.estimate)} · ${formatPercent(point.estimate?.coverage_ratio || 0)}`;
 }
 
@@ -1023,7 +1018,7 @@ function renderOverviewModels(models) {
     const total = usageTotal(item.usage);
     const cost = estimateDisplay(item.estimate);
     const coverage = estimateTokens(item.estimate) ? formatPercent(item.estimate.coverage_ratio) : t("dynamic.unpriced");
-    return `<div class="rank-row"><span class="rank-name" title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><span class="rank-signal" aria-hidden="true"><i style="width:${Math.max(1, total / max * 100)}%"></i></span><span class="rank-value" title="${fullToken(total)} Token">${formatToken(usageTotal(modesFor(item).regular))}<small class="mode-fast">Fast ${formatToken(usageTotal(modesFor(item).fast))}</small><small>${cost} · ${coverage}</small></span></div>`;
+    return `<div class="rank-row"><span class="rank-name" title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><span class="rank-signal" aria-hidden="true"><i style="width:${Math.max(1, total / max * 100)}%"></i></span><span class="rank-value" title="${fullToken(total)} Token">${formatToken(usageTotal(item.usage))}<small class="mode-fast">Fast ${formatToken(usageTotal(modesFor(item).fast))}</small><small>${cost} · ${coverage}</small></span></div>`;
   }).join("");
 }
 
@@ -1145,7 +1140,7 @@ function renderCalendar(report) {
     const selected = date === state.selectedDate;
     const hasCost = Number(point.estimate?.priced_tokens || 0) > 0;
     const aria = t("dynamic.calendarDayAria", { day: i18n.formatNumber(day), tokens: fullToken(total), estimate: estimateLabel(point.estimate) });
-    cells.push(`<button class="calendar-day pressable ${selected ? "selected" : ""} ${date === todayKey() ? "today" : ""} ${total ? "" : "zero"}" type="button" role="gridcell" data-calendar-date="${date}" aria-selected="${selected}" tabindex="${selected ? "0" : "-1"}" aria-label="${escapeHTML(`${aria} / ${modeText(point)}`)}"><span class="day-number">${i18n.formatNumber(day)}</span>${hasCost ? '<i class="cost-marker" aria-hidden="true"></i>' : ""}<span class="day-usage" aria-hidden="true"><i style="--day-strength:${strength}%"></i></span><span class="day-amount">${formatToken(usageTotal(modesFor(point).regular))}</span><small class="day-fast-amount">Fast ${formatToken(usageTotal(modesFor(point).fast))}</small></button>`);
+    cells.push(`<button class="calendar-day pressable ${selected ? "selected" : ""} ${date === todayKey() ? "today" : ""} ${total ? "" : "zero"}" type="button" role="gridcell" data-calendar-date="${date}" aria-selected="${selected}" tabindex="${selected ? "0" : "-1"}" aria-label="${escapeHTML(`${aria} / ${modeText(point)}`)}"><span class="day-number">${i18n.formatNumber(day)}</span>${hasCost ? '<i class="cost-marker" aria-hidden="true"></i>' : ""}<span class="day-usage" aria-hidden="true"><i style="--day-strength:${strength}%"></i></span><span class="day-amount">${formatToken(usageTotal(point.usage))}</span><small class="day-fast-amount">Fast ${formatToken(usageTotal(modesFor(point).fast))}</small></button>`);
   }
   while (cells.length % 7) cells.push(`<span class="calendar-blank" aria-hidden="true"></span>`);
   const grid = $("#calendarGrid");
@@ -1205,7 +1200,7 @@ async function loadDailySelection(date) {
 
 function renderDayDetail(point, report, loadingModels = false) {
   const date = dateFromKey(point.date);
-  const usage = modesFor(point).regular;
+  const usage = point.usage || emptyUsage();
   const total = usageTotal(usage);
   const estimate = point.estimate || {};
   const title = i18n.formatDate(date, { month: "long", day: "numeric", weekday: "long" });
@@ -1235,7 +1230,7 @@ function renderDayDetail(point, report, loadingModels = false) {
   }
   const models = report?.models || [];
   $("#dayModelCount").textContent = models.length ? t("common.modelShort", { count: i18n.formatNumber(models.length) }) : "";
-  $("#dayModels").innerHTML = models.length ? models.map((item) => `<div class="mini-model-row"><span title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><strong title="${fullToken(usageTotal(item.usage))}">${formatToken(usageTotal(modesFor(item).regular))}<small class="mode-fast">Fast ${formatToken(usageTotal(modesFor(item).fast))}</small></strong></div>`).join("") : `<div class="empty-state">${escapeHTML(t("dynamic.noModelsDay"))}</div>`;
+  $("#dayModels").innerHTML = models.length ? models.map((item) => `<div class="mini-model-row"><span title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><strong title="${fullToken(usageTotal(item.usage))}">${formatToken(usageTotal(item.usage))}<small class="mode-fast">Fast ${formatToken(usageTotal(modesFor(item).fast))}</small></strong></div>`).join("") : `<div class="empty-state">${escapeHTML(t("dynamic.noModelsDay"))}</div>`;
 }
 
 async function loadBreakdown({ preserve = false } = {}) {
@@ -1316,7 +1311,7 @@ function renderBreakdown(items, dimension) {
     const aria = active
       ? t("dynamic.drillCancelAria", { value: item.key })
       : t("dynamic.drillAria", { value: item.key });
-    return `<div class="breakdown-row"><span class="breakdown-name" title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><span class="breakdown-track" aria-hidden="true"><i style="width:${Math.max(1, totalTokens / max * 100)}%"></i></span><span class="breakdown-value" title="${fullToken(totalTokens)} Token">${formatToken(usageTotal(modesFor(item).regular))}<small class="mode-fast">Fast ${formatToken(usageTotal(modesFor(item).fast))}</small></span>${canFilter ? `<button class="breakdown-filter pressable ${active ? "active" : ""}" type="button" data-drill-value="${escapeHTML(item.key)}" title="${escapeHTML(title)}" aria-label="${escapeHTML(aria)}" aria-pressed="${active}">${active ? "×" : "＋"}</button>` : "<span></span>"}</div>`;
+    return `<div class="breakdown-row"><span class="breakdown-name" title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><span class="breakdown-track" aria-hidden="true"><i style="width:${Math.max(1, totalTokens / max * 100)}%"></i></span><span class="breakdown-value" title="${fullToken(totalTokens)} Token">${formatToken(usageTotal(item.usage))}<small class="mode-fast">Fast ${formatToken(usageTotal(modesFor(item).fast))}</small></span>${canFilter ? `<button class="breakdown-filter pressable ${active ? "active" : ""}" type="button" data-drill-value="${escapeHTML(item.key)}" title="${escapeHTML(title)}" aria-label="${escapeHTML(aria)}" aria-pressed="${active}">${active ? "×" : "＋"}</button>` : "<span></span>"}</div>`;
   }).join("");
   $$('[data-drill-value]', container).forEach((button) => button.addEventListener("click", () => {
     if (state.filters[dimension] === button.dataset.drillValue) delete state.filters[dimension];
@@ -1334,7 +1329,7 @@ function sessionEstimatePresentation(estimate = {}) {
   const cost = totalEstimateTokens && !pricedTokens ? t("dynamic.unpriced") : estimateDisplay(estimate);
   const partialCoverage = pricedTokens > 0 && Number(estimate.coverage_ratio || 0) < 1
     ? formatPercent(estimate.coverage_ratio) : "";
-  const title = [estimateLabel(estimate), costModes(estimate), reasonSummary(estimate), t("mode.costNote")].filter(Boolean).join(" · ");
+  const title = [estimateLabel(estimate), costModes(estimate), reasonSummary(estimate)].filter(Boolean).join(" · ");
   return { cost, partialCoverage, title };
 }
 
@@ -1395,7 +1390,7 @@ function renderSessions(items, { estimatesPending = false } = {}) {
     <div class="session-cell"><span title="${escapeHTML(item.project_path || t("common.notRecorded"))}">${escapeHTML(shortPath(item.project_path))}</span><small title="${escapeHTML(item.project_path || "")}">${escapeHTML(item.project_path || t("common.notRecorded"))}</small></div>
     <div class="session-cell"><strong title="${escapeHTML(item.model || t("common.unknownModel"))}">${escapeHTML(item.model || t("common.unknownModel"))}</strong><span>${escapeHTML(item.source || t("common.unknownSource"))}</span></div>
     <div class="session-cell"><span class="agent-badge">${escapeHTML(item.agent_type || "main")}</span><span class="confidence-badge ${escapeHTML(item.confidence)}">${confidenceLabel(item.confidence)}</span></div>
-    <div class="session-metric session-token" title="${fullToken(usageTotal(item.usage))} Token"><small class="session-mobile-label">${t("mode.regularTokens")}</small><strong>${formatToken(usageTotal(modesFor(item).regular))}</strong><div class="mode-row-detail">${modeDetail(item,true)}</div></div>
+    <div class="session-metric session-token" title="${fullToken(usageTotal(item.usage))} Token"><small class="session-mobile-label">${t("mode.totalTokens")}</small><strong>${formatToken(usageTotal(item.usage))}</strong><div class="mode-row-detail">${modeDetail(item,true)}</div></div>
     ${costCell}
     <div class="session-cell"><span>${escapeHTML(localTime(item.last_usage))}</span></div>
     <button class="session-filter pressable ${active ? "active" : ""}" type="button" data-session-filter="${escapeHTML(item.session_id)}" aria-pressed="${active}">${escapeHTML(t(active ? "details.cancelSessionFilter" : "details.onlySession"))}</button>

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="本地优先的 Codex 使用分析：逐电脑归属、模型/项目/会话明细与 API 等价成本（含 Fast 折算）">
+  <meta name="description" content="本地优先的 Codex 使用分析：逐电脑归属、模型/项目/会话明细与 API 等价成本">
   <title>Codex Usage · 本地使用分析</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
@@ -72,20 +72,18 @@
 
       <section class="hero-metrics surface" aria-label="当前范围核心指标" data-i18n-aria-label="overview.metricsAria">
         <article class="hero-metric token-metric">
-          <span class="metric-label" data-i18n="overview.total">常规 Token</span>
-          <div class="mode-hero-row"><strong class="hero-value loading" id="overviewTotal">—</strong><div class="fast-hero"><span>Fast Token</span><strong id="overviewFast">—</strong><small id="overviewFastShare">—</small></div></div>
-          <div class="mode-overview-meta"><span id="overviewAll">—</span><button class="text-button mode-unknown pressable" id="overviewUnknown" type="button" data-mode-filter="unknown" hidden></button></div>
-          <p class="metric-note" id="modeBackfillNote" hidden></p>
+          <span class="metric-label" data-i18n="overview.total">总 Token</span>
+          <strong class="hero-value loading" id="overviewTotal">—</strong>
+          <div class="mode-token-breakdown" id="overviewTokenModes"></div>
           <div class="metric-breakdown" id="overviewTokenBreakdown"></div>
         </article>
         <div class="hero-divider" aria-hidden="true"></div>
         <article class="hero-metric cost-metric">
-          <div class="metric-label-row"><span class="metric-label" data-i18n="overview.cost">API 等价成本（含 Fast 折算）</span><button class="text-button copper pressable" id="pricingButton" type="button" aria-haspopup="dialog" aria-controls="pricingDialog" data-i18n="overview.pricing">定价设置</button></div>
+          <div class="metric-label-row"><span class="metric-label" data-i18n="overview.cost">API 等价成本</span><button class="text-button copper pressable" id="pricingButton" type="button" aria-haspopup="dialog" aria-controls="pricingDialog" data-i18n="overview.pricing">定价设置</button></div>
           <strong class="hero-value cost loading" id="overviewCost">—</strong>
           <div class="coverage-line"><span class="coverage-track" aria-hidden="true"><i id="overviewCoverageBar"></i></span><span id="overviewCoverage" data-i18n="overview.estimating">正在估算…</span></div>
           <div class="mode-cost-breakdown" id="overviewCostModes"></div>
-          <details class="mode-cost-details"><summary data-i18n="mode.costMethod">折算方式与基础费用</summary><p data-i18n="mode.costNote"></p><p id="overviewCostBase"></p></details>
-          <p class="metric-note" id="overviewCostNote" data-i18n="overview.notBill">不是 OpenAI 真实账单</p>
+          <p class="metric-note" id="overviewCostNote"></p>
         </article>
       </section>
 
@@ -120,7 +118,7 @@
             </div>
             <div><div class="mode-detail" id="hourlyModes"></div><div class="hourly-ledger" id="hourlyLedger"><span class="hourly-placeholder" data-i18n="common.loading">正在读取…</span></div></div>
           </div>
-          <div class="mode-legend"><span data-i18n="mode.regular">常规</span><span class="fast" data-i18n="mode.fast">Fast</span></div>
+          <div class="mode-legend"><span data-i18n="mode.totalTokens">总 Token</span><span class="fast" data-i18n="mode.fast">Fast</span></div>
           <div class="hourly-chart-scroll">
             <div class="hourly-chart" id="hourlyChart">
               <svg class="hourly-line" id="hourlyLine" viewBox="0 0 1000 180" preserveAspectRatio="none" aria-hidden="true"></svg>
@@ -155,14 +153,14 @@
               <p id="pulseCaption" data-i18n="pulse.caption">连续本地自然日 · 零用量日保留位置</p>
             </div>
           </div>
-          <div class="mode-legend"><span data-i18n="mode.regular">常规</span><span class="fast">Fast</span></div>
+          <div class="mode-legend"><span data-i18n="mode.totalTokens">总 Token</span><span class="fast">Fast</span></div>
           <div class="pulse-scroll" id="pulseScroll">
             <div class="pulse-belt" id="pulseBelt" role="listbox" aria-label="每日 Token 用量" data-i18n-aria-label="pulse.aria"></div>
           </div>
           <div class="pulse-inspector" id="pulseInspector" aria-live="polite">
             <div><span data-i18n="pulse.selectedDate">选中日期</span><strong id="pulseDate">—</strong></div>
-            <div><span data-i18n="mode.regular">常规</span><strong id="pulseTotal">—</strong></div>
-            <div><span>Fast / <span data-i18n="mode.all">全部</span></span><strong id="pulseIO">—</strong></div>
+            <div><span data-i18n="mode.totalTokens">总 Token</span><strong id="pulseTotal">—</strong></div>
+            <div><span>Fast</span><strong id="pulseIO">—</strong></div>
             <div><span data-i18n="pulse.cost">等价成本</span><strong class="copper" id="pulseCost">—</strong></div>
           </div>
         </div>
@@ -211,11 +209,11 @@
 
         <aside class="surface day-detail" aria-labelledby="selectedDateTitle">
           <div class="day-detail-head"><h2 id="selectedDateTitle" data-i18n="daily.selectDay">选择一天</h2><span class="day-status" id="selectedDayStatus">—</span></div>
-          <div class="day-total"><span data-i18n="mode.regularTokens">常规 Token</span><strong id="dayTotal">—</strong></div><div class="mode-detail" id="dayModes"></div>
+          <div class="day-total"><span data-i18n="mode.totalTokens">总 Token</span><strong id="dayTotal">—</strong></div><div class="mode-detail" id="dayModes"></div>
           <div class="composition-bar" id="dayComposition" aria-label="Token 构成" data-i18n-aria-label="daily.compositionAria"></div>
           <dl class="token-ledger" id="dayLedger"></dl>
           <div class="day-cost">
-            <span data-i18n="overview.cost">API 等价成本（含 Fast 折算）</span>
+            <span data-i18n="overview.cost">API 等价成本</span>
             <strong id="dayCost">—</strong>
             <small id="dayCoverage">—</small>
           </div>
@@ -265,7 +263,7 @@
             <button class="session-search-clear pressable hidden" id="sessionSearchClear" type="button" aria-label="清空搜索" data-i18n-aria-label="details.clearSearch">×</button>
           </div>
         </div>
-        <div class="session-head" aria-hidden="true"><span>Thread</span><span data-i18n="details.headerProject">项目</span><span data-i18n="details.headerModelSource">模型 / 来源</span><span>Agent</span><span data-i18n="mode.regularTokens">常规 Token</span><span data-i18n="details.headerCost">等价 API 价格</span><span data-i18n="details.headerLastActive">最后活动</span><span></span></div>
+        <div class="session-head" aria-hidden="true"><span>Thread</span><span data-i18n="details.headerProject">项目</span><span data-i18n="details.headerModelSource">模型 / 来源</span><span>Agent</span><span data-i18n="mode.totalTokens">总 Token</span><span data-i18n="details.headerCost">等价 API 价格</span><span data-i18n="details.headerLastActive">最后活动</span><span></span></div>
         <div class="session-list" id="sessionRows"><div class="empty-state" data-i18n="details.sessionsLoading">正在加载本机 Session…</div></div>
       </section>
     </section>
@@ -277,7 +275,7 @@
     <div class="dialog-frame">
       <div class="dialog-head"><h2 id="filterTitle" data-i18n="filter.title">筛选当前电脑的数据</h2><button class="dialog-close pressable" type="button" data-close aria-label="关闭筛选" data-i18n-aria-label="action.closeFilter">×</button></div>
       <form class="filter-form" id="filterForm">
-        <label><span data-i18n="filter.mode">运行模式</span><select id="filterMode"><option value="" data-i18n="mode.allModes">全部模式</option><option value="regular" data-i18n="mode.regularAssumed">常规（含暂定）</option><option value="fast">Fast</option><option value="unknown" data-i18n="mode.unknown">模式未确认</option></select></label>
+        <label><span data-i18n="filter.mode">运行模式</span><select id="filterMode"><option value="" data-i18n="mode.allModes">全部模式</option><option value="regular" data-i18n="mode.regular">常规</option><option value="fast">Fast</option></select></label>
         <label><span data-i18n="filter.date">日期</span><input id="filterDate" type="date" aria-label="筛选日期" data-i18n-aria-label="filter.dateAria"></label>
         <label><span data-i18n="filter.model">模型</span><select id="filterModel"><option value="" data-i18n="filter.allModels">全部模型</option></select></label>
         <label><span data-i18n="filter.source">来源</span><select id="filterSource"><option value="" data-i18n="filter.allSources">全部来源</option></select></label>

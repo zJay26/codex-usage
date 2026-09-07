@@ -1,6 +1,6 @@
 # Fast 模式统计与费用折算
 
-Dashboard 同时显示常规和 Fast token，以常规为主。原始 token 不乘倍率：常规包含明确常规及模式未确认的记录；未确认数量作为常规的子集单独注明。常规与 Fast 相加始终等于全部 token。
+Dashboard 以总 Token 为主要指标，概览下方显示常规 / Fast 拆分；趋势、模型和任务显示总量与 Fast。原始 token 不乘倍率，常规与 Fast 相加始终等于总 Token。模式未确认记录归入常规，界面不单独提示；API 和导出保留原始模式元数据供追溯。
 
 ## 模式证据
 
@@ -20,7 +20,7 @@ schema v7 到 v8 为增量迁移，不清除账目或扫描游标，不要求全
 
 常规沿用既有 Standard API 价格及本机定价覆写。Fast 的相同 token 分类基础费用乘以 ChatGPT Codex 额度倍率：GPT-6 Astra、GPT-5.6 Sol/Terra/Luna、GPT-5.5 为 2.5；GPT-5.4 为 2。别名与日期快照通过模型目录解析，不将 mini、Spark、未知模型或未确认的自定义模型自动套入倍率。
 
-这一口径称为“API 等价成本（含 Fast 折算）”，是额度倍率加权的估算，不是实际 API Priority 账单，也不是账号额度扣除记录。基础单价和倍率分别显示核对日期。未知单价、缺失缓存写入价格、缺少 Fast 倍率的部分继续显示为未定价。
+界面统一称为“API 等价成本”，以一句话显示 API 价格和 Fast 额度规则的更新日期。计算仍为额度倍率加权的估算，不是实际 API Priority 账单，也不是账号额度扣除记录。未知单价、缺失缓存写入价格、缺少 Fast 倍率的部分继续显示为未定价。
 
 倍率核对于 2026-09-07：[OpenAI Fast 模式说明](https://learn.chatgpt.com/docs/agent-configuration/speed)。历史估算使用当前目录与倍率，不模拟历史账单。
 
