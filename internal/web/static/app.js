@@ -285,7 +285,7 @@ const confidenceLabel = (value) => {
 
 async function api(path, options = {}) {
   const method = String(options.method || "GET").toUpperCase();
-  const cacheable = method === "GET" && !path.startsWith("/api/v1/status") && !path.startsWith("/api/v1/warnings");
+  const cacheable = method === "GET" && !path.startsWith("/api/v1/status") && !path.startsWith("/api/v1/warnings") && !path.startsWith("/api/v1/updates");
   const requestGeneration = cacheGeneration;
   const key = `${requestGeneration}:${method} ${path}`;
   if (cacheable) {

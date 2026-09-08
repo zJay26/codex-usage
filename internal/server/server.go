@@ -19,6 +19,7 @@ import (
 	"github.com/zJay26/codex-usage/internal/model"
 	"github.com/zJay26/codex-usage/internal/pricing"
 	"github.com/zJay26/codex-usage/internal/store"
+	"github.com/zJay26/codex-usage/internal/updater"
 	"github.com/zJay26/codex-usage/internal/usage"
 	usageweb "github.com/zJay26/codex-usage/internal/web"
 )
@@ -30,6 +31,7 @@ type Server struct {
 	Address              string
 	Port                 int
 	Version              string
+	Updates              *updater.Manager
 	LoadPricingOverrides func() (map[string]pricing.Override, error)
 	SavePricingOverrides func(map[string]pricing.Override) error
 
@@ -58,6 +60,8 @@ func (s *Server) Handler() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": s.Version})
 	})
 	mux.HandleFunc("/api/v1/status", s.handleStatus)
+	mux.HandleFunc("/api/v1/updates", s.handleUpdates)
+	mux.HandleFunc("/api/v1/updates/", s.handleUpdates)
 	mux.HandleFunc("/api/v1/summary", s.handleSummary)
 	mux.HandleFunc("/api/v1/timeseries", s.handleTimeseries)
 	mux.HandleFunc("/api/v1/breakdown", s.handleBreakdown)

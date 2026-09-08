@@ -21,6 +21,9 @@ func Handler() http.Handler {
 	styles, _ := fs.ReadFile(sub, "styles.css")
 	i18n, _ := fs.ReadFile(sub, "i18n.js")
 	script, _ := fs.ReadFile(sub, "app.js")
+	updates, _ := fs.ReadFile(sub, "updates.js")
+	index = bytes.ReplaceAll(index, []byte(`src="/updates.js"`),
+		[]byte(`src="/updates.js?v=`+assetVersion(updates)+`"`))
 	index = bytes.ReplaceAll(index, []byte(`href="/styles.css"`),
 		[]byte(`href="/styles.css?v=`+assetVersion(styles)+`"`))
 	index = bytes.ReplaceAll(index, []byte(`src="/app.js"`),

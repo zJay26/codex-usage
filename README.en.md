@@ -46,7 +46,11 @@ chmod +x codex-usage
 
 Need arm64? Download `windows-arm64.exe` or `linux-arm64` from the [latest Release](https://github.com/zJay26/codex-usage/releases/latest). Verify the file against `SHA256SUMS` on the same page.
 
-The installer finds existing Codex usage on this computer and keeps the Dashboard updated in the background. Run `codex-usage` to open it. To upgrade, run `install` again; existing statistics are kept.
+The installer finds existing Codex usage on this computer and keeps the Dashboard updated in the background. Run `codex-usage` to open it.
+
+Starting with **v2.5.0**, the application checks GitHub for the latest stable release every six hours by default. Updates are optional: open **Software updates** in the footer to review release notes, disable automatic checks, or check manually. Only **Download and update** downloads the release, verifies SHA256, backs up the program and local statistics, and replaces and restarts the application. A startup failure triggers an attempt to restore the previous program and data. Backups remain under `.codex-usage-updates/run-*` in the state directory.
+
+**Older versions need one manual download and `install` before in-app updates become available.** Portable and preview copies only offer version checks and the release page. Checks fetch version information from GitHub, downloads come from this project's Release assets, and neither uploads usage, paths, or conversations. Turning off automatic checks stops background update requests. Re-running `install` remains available for manual upgrades.
 
 On a headless Linux server, Codex Usage prints an SSH tunnel command. Run it from your own computer, then open `http://127.0.0.1:43189`.
 
@@ -66,7 +70,8 @@ On a headless Linux server, Codex Usage prints an SSH tunnel command. Run it fro
 | Capability | What you get |
 |---|---|
 | Per-machine attribution | Keep work, home, Windows, WSL, and Linux usage clearly separated |
-| History and automatic updates | Find existing records after installation and add new local usage automatically |
+| History and incremental scans | Find existing records after installation and add new local usage automatically |
+| Optional software updates | Check and notify automatically; download and install only when chosen, with an opt-out for automatic checks |
 | Total and Fast | Keep total tokens prominent, show regular / Fast beneath the overview, and show total plus Fast in trends, models, and sessions |
 | Session search and filters | Search by Thread, Session ID, project, model, or source; click an active quick filter again to clear it |
 | Daily drill-down | Explore trends, calendar days, zero-usage days, and any day's model mix |

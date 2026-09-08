@@ -299,14 +299,20 @@
     };
   }
 
+  const demoUpdates = { current_version: "2.5.0-demo", latest_version: "2.5.0", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: false, can_install: false, phase: "idle" };
   async function syntheticFetch(input, init = {}) {
     const raw = typeof input === "string" ? input : input.url;
     const url = new URL(raw, root.location.href);
     if (!url.pathname.includes("/api/v1/")) return root.fetch.__codexUsageOriginal(input, init);
     const endpoint = url.pathname.slice(url.pathname.indexOf("/api/v1/"));
     const method = String(init.method || (typeof input !== "string" && input.method) || "GET").toUpperCase();
+    if (endpoint.startsWith("/api/v1/updates")) {
+      if (endpoint.endsWith("/preferences")) demoUpdates.auto_check = Boolean(JSON.parse(init.body || "{}").auto_check);
+      if (endpoint.endsWith("/install")) return jsonResponse({ error: "Updates are unavailable in the synthetic demo" }, 409);
+      return jsonResponse(demoUpdates);
+    }
     if (endpoint === "/api/v1/status") return jsonResponse({
-      version: "2.4.1-demo", scanning: false,
+      version: "2.5.0-demo", scanning: false,
       status: {
         machine: { id: "synthetic-machine", label: "Synthetic Windows · demo", hostname: "synthetic-host", os: "windows", arch: "amd64" },
         last_scan: now.toISOString(), accounting_mode: "jsonl_only", otel_active: false,
