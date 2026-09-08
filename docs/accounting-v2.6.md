@@ -2,7 +2,9 @@
 
 ## Counter scope and safe ingestion
 
-The persisted accounting state distinguishes an unknown/session counter from a turn counter. A changed `turn_id` alone does not reset legacy session totals. A new turn whose complete `total_token_usage` equals `last_token_usage` establishes turn scope, including totals smaller than, equal to, or larger than the previous turn. Subsequent snapshots of that turn contribute only their delta. Missing subset fields retain the existing classification only within the same counter scope.
+As of v2.6.3, every new turn is evaluated independently. A changed `turn_id` alone never resets cumulative totals, even after an earlier reset. A new turn whose complete `total_token_usage` equals `last_token_usage` establishes a fresh baseline, including totals smaller than, equal to, or larger than the preceding total. A later turn that continues the same series, or repeats an unchanged snapshot, retains its baseline. The duplicate path persists the new interpretation so the next incremental scan cannot inherit stale turn scope. Same-total classification corrections remain attached to the original usage.
+
+After a reset, a later boundary may lack enough snapshots to prove whether it continued or reset again. Positive monotonic differences are retained conservatively and marked `gap_fallback` with `cumulative_boundary_unverified`; the previous scope is never used as proof of another reset. Missing subset fields retain the existing classification only within the same counter scope.
 
 Turn-aware event identities also deduplicate copied rollouts. For proven turn counters created after migration, each file transaction checks the turn's existing ledger before reading its tail; a restored file that starts midway through a turn adds only the previously unseen increment. Session-cumulative writers keep the existing high-water behavior. Physical ownership remains the first `session_meta`; fork replay is excluded before accounting. Classification corrections for turn-scoped counters stay inside that turn, including fragments restored to another physical file.
 
@@ -12,9 +14,13 @@ This transaction is per physical file, so a large initial import can delay anoth
 
 ## Upgrade boundary
 
-Schema v9 is additive. Opening a v2.5.0 database preserves token amounts, timestamps, pricing classification, original local date labels and existing cursors. It adds accounting state, parent relationships, a persisted time zone and UTC hour identities. The Dashboard shows that pre-upgrade history has been retained. Metadata can be backfilled from retained sources without rebuilding token history.
+**v2.6.0–v2.6.2 contain a mixed-counter regression.** After one reset, later turns could count the full previous cumulative amount again, including unchanged snapshots. Zero warnings and idempotent repeated scans did not establish accuracy for those versions. v2.6.3 corrects this interpretation and upgrades the schema to v10.
 
-The new parser applies to newly read records. It does not silently recalculate previously undercounted turns. Explicit `codex-usage scan --rebuild` recalculates only retained JSONL files and may lose entries whose original files have been deleted. Back up the state and verify source coverage first. A pre-upgrade session restored into a new physical file requests a rebuild when its old event identities cannot safely prove replay ownership.
+Opening a schema-v9 database with existing JSONL events preserves the ledger and cursors, immediately records a rebuild warning, and pauses incremental ingestion until an explicit rebuild. The Dashboard's **Rescan → Approve and rebuild** flow and CLI `scan --rebuild` recalculate retained sources with the corrected parser. Merely updating the program does not repair existing event deltas. Empty databases need no historical repair.
+
+Upgrades directly from v2.5.0 retain the earlier additive migration: token amounts, timestamps, pricing classification, original local date labels and cursors remain intact. Accounting state, parent relationships, a persisted time zone and UTC hour identities are added. Metadata can be backfilled from retained sources without rebuilding token history.
+
+Explicit `codex-usage scan --rebuild` recalculates only retained JSONL files and may lose entries whose original files have been deleted. Back up the state and verify source coverage first. A pre-upgrade session restored into a new physical file also requests a rebuild when its old event identities cannot safely prove replay ownership.
 
 ## Query consistency and performance
 

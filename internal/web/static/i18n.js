@@ -348,6 +348,7 @@
       "warning.rollout_rewritten": "JSONL 已重写，等待确认重建",
       "warning.rollout_truncated": "JSONL 已截断，等待确认重建",
       "warning.schema_upgrade_rebuild": "解析规则已升级，等待确认重建",
+      "warning.cumulative_boundary_unverified": "累计边界无法完整核对，可能缺少用量",
       "warning.cumulative_reset": "累计快照回退补位",
       "warning.cumulative_gap_fallback": "累计边界无法完整核对",
       "warning.timestamp": "时间戳无法归属",
@@ -379,7 +380,7 @@
       "pricing.modelRequired": "请输入要覆写的模型名",
       "scan.complete": "扫描完成：新增 {inserted} 个事件，忽略 {duplicates} 个重复",
       "rebuild.title": "需要重建统计数据",
-      "rebuild.intro": "检测到本地 JSONL 历史发生变化。重建会先清空当前派生统计，再仅从当前仍存在的 JSONL 重新计算；已删除的 JSONL 数据可能从统计中消失。",
+      "rebuild.intro": "计量规则或本地 JSONL 历史发生变化。请先备份并核对源文件：重建会清空当前派生统计，再仅从仍存在的 JSONL 重新计算；已删除源文件的历史可能从统计中消失。",
       "rebuild.keep": "保留现有统计",
       "rebuild.confirm": "同意并重建"
     },
@@ -728,6 +729,7 @@
       "warning.rollout_rewritten": "Rewritten JSONL awaiting rebuild approval",
       "warning.rollout_truncated": "Truncated JSONL awaiting rebuild approval",
       "warning.schema_upgrade_rebuild": "Parser upgrade awaiting rebuild approval",
+      "warning.cumulative_boundary_unverified": "Unverified counter boundary; usage may be incomplete",
       "warning.cumulative_reset": "Cumulative snapshot reset fallback",
       "warning.cumulative_gap_fallback": "Cumulative boundary could not be fully verified",
       "warning.timestamp": "Timestamp could not be attributed",
@@ -759,7 +761,7 @@
       "pricing.modelRequired": "Enter a model name to override",
       "scan.complete": "Scan complete: {inserted} events added, {duplicates} duplicates ignored",
       "rebuild.title": "Usage history rebuild required",
-      "rebuild.intro": "Local JSONL history has changed. Rebuilding first clears the current derived statistics, then recalculates only from JSONL files that still exist. Data from deleted JSONL files may disappear.",
+      "rebuild.intro": "Accounting rules or local JSONL history have changed. Back up and check source coverage first: rebuilding clears derived statistics and recalculates only retained JSONL. History whose source files were deleted may disappear.",
       "rebuild.keep": "Keep current statistics",
       "rebuild.confirm": "Approve and rebuild"
     }

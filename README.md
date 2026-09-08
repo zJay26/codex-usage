@@ -29,7 +29,7 @@
 
 ## 直接安装
 
-本文对应稳定版 **[v2.6.2](https://github.com/zJay26/codex-usage/releases/tag/v2.6.2)**；变更和升级边界见 [发布说明](docs/releases/v2.6.2.md)。以下下载链接始终指向最新稳定版。
+本文对应稳定版 **[v2.6.3](https://github.com/zJay26/codex-usage/releases/tag/v2.6.3)**；变更和升级边界见 [发布说明](docs/releases/v2.6.3.md)。以下下载链接始终指向最新稳定版。
 
 | 系统 | amd64 / x64 | arm64 |
 |---|---|---|
@@ -92,7 +92,7 @@ chmod +x codex-usage
 
 “软件更新”中可以设置**更新包下载目录**，并打开文件夹或复制路径。默认保存到用户下载目录下的 `codex-usage` 文件夹；版本文件夹内保留正式安装包，界面显示最近下载的完整路径。保存新目录只影响后续下载，已有文件留在原处；数据库备份仍保留在本机状态目录。
 
-v2.6 系列升级会保留现有统计，计量修复适用于新读入的记录。若要修正旧版本已经漏计的历史，需先备份并核对仍保留的 JSONL，再显式执行 `scan --rebuild`；源文件已删除的历史无法由重建恢复。
+**v2.6.3 修复了 v2.6.0–v2.6.2 在混合累计记录中重复计算旧用量的问题。** 从这些版本升级后，已有统计会保留并标记为需要核对，增量扫描暂停。先备份并确认源 JSONL 仍齐全，再点击“重新扫描”并选择“同意并重建”，或显式执行 `codex-usage scan --rebuild`，修正已入库的错误历史。源文件已删除的历史无法由重建恢复；只升级程序不会自动修正旧账。
 
 ## 你能看到什么
 
@@ -165,7 +165,7 @@ flowchart LR
 
 程序只读当前电脑的 `CODEX_HOME`。它优先从 Codex 状态库取得 session 路径、项目和 Thread 信息，再流式读取 `sessions/` 与 `archived_sessions/` 中的 JSONL。
 
-Token 记录可能按 Session 累计，也可能按 Turn 累计。扫描器保存计量范围与上次 Token 所属 Turn；新 Turn 的 `total_token_usage` 与 `last_token_usage` 相等时建立 Turn 范围，数值小于、等于或大于上一 Turn 均重新起算。旧版 Session 累计仍保留跨 Turn 基线。程序在**每一条** `token_count` 记录处按对应 Session 或 Turn 的累计基线计算增量，归到该条记录时间戳对应的计量自然日；不会按 session 的最后更新时间把整段历史塞到同一天。重复扫描仍由稳定事件 ID 与游标去重。超大的 prompt、回复和工具输出记录会被跳过，不会整行载入内存，也不会写进数据库。
+Token 记录可能跨 Turn 连续累计，也可能在某个 Turn 重置。扫描器逐个边界核对：新 Turn 的 `total_token_usage` 与 `last_token_usage` 相等时重新起算，支持小于、等于或大于上一累计值；后续 Turn 若继续累计或重发旧快照，则保留原基线。一次重置不会决定后续所有 Turn 的计量方式。缺少快照而无法区分连续累计与再次重置时，会保守按差值计量并提示可能缺少用量。程序在**每一条** `token_count` 记录处计算增量，归到该条记录时间戳对应的计量自然日；不会按 session 的最后更新时间把整段历史塞到同一天。重复扫描仍由稳定事件 ID 与游标去重。超大的 prompt、回复和工具输出记录会被跳过，不会整行载入内存，也不会写进数据库。
 
 Codex 状态库只用于发现 rollout 路径并补充标题、项目等 metadata；其中的 `tokens_used` 不参与 Token 总量。OpenAI 的 [`account/usage/read`](https://learn.chatgpt.com/docs/app-server#7-token-usage-chatgpt) 是服务端账号 Token 活动；本工具只统计当前电脑的本地 JSONL，两者范围不同。
 

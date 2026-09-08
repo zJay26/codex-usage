@@ -31,23 +31,33 @@ func (s *Scanner) scanFile(ctx context.Context, home, path string, meta model.Se
 
 // A context boundary alone is insufficient: legacy writers keep a session
 // counter across turns. Exact total==last at a NEW turn proves a fresh counter
-// even when it equals or exceeds the previous turn's total. Once a writer has
-// established turn scope, a missing first snapshot still starts at zero.
-func selectCounterScope(cursor *store.FileCursor, info tokenInfo) bool {
+// even when it equals or exceeds the previous turn's total. A reset only proves
+// the current boundary: the next turn may continue that same cumulative series
+// or initially repeat its last snapshot. Never reset from the saved scope alone.
+// The result marks a boundary where preserving the baseline is conservative,
+// but missing snapshots prevent distinguishing a continuation from a new reset.
+func selectCounterScope(cursor *store.FileCursor, info tokenInfo) (unverified bool) {
 	current, last := info.Total.usage(), info.Last.usage()
 	newTurn := cursor.TurnID != "" && cursor.Accounting.LastTurnID != "" && cursor.TurnID != cursor.Accounting.LastTurnID
-	reset := newTurn && !current.IsZero() && (cursor.Accounting.Scope == "turn" || (!last.IsZero() && current.Equal(last)))
+	reset := newTurn && !current.IsZero() && !last.IsZero() && current.Equal(last)
 	if reset {
 		cursor.Accounting.Scope = "turn"
 		cursor.Segment++
 		cursor.Cumulative = model.TokenUsage{}
 		cursor.LastEventID = ""
 		cursor.InheritedBaseline = false
-	} else if newTurn && !last.IsZero() && current.Sub(last).Equal(cursor.Cumulative) {
+	} else if newTurn {
+		continued := info.Total.withMissingSubsets(cursor.Cumulative)
+		unverified = cursor.Accounting.Scope == "turn" && current.Total > cursor.Cumulative.Total &&
+			continued.MonotonicFrom(cursor.Cumulative) && !continued.Sub(cursor.Cumulative).Equal(last)
+		// Preserve the preceding baseline for a continuing series, a repeated
+		// snapshot, or a boundary without enough evidence to prove a reset.
+		// processRecord still handles an actual regression conservatively and
+		// warns when last_token_usage cannot explain the whole reset.
 		cursor.Accounting.Scope = "session"
 	}
 	cursor.Accounting.LastTurnID = cursor.TurnID
-	return reset
+	return unverified
 }
 
 func isRecordError(err error) bool {

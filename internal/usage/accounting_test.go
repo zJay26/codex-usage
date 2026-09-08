@@ -92,6 +92,124 @@ func TestTurnCountersSmallerEqualLargerAndRestart(t *testing.T) {
 	}
 }
 
+func TestMixedCounterBoundariesReevaluateEachTurn(t *testing.T) {
+	for _, incremental := range []bool{false, true} {
+		t.Run(fmt.Sprintf("incremental=%v", incremental), func(t *testing.T) {
+			st, home, path := accountingFixture(t)
+			ctx := context.Background()
+			appendAccounting(t, path, accountingMeta)
+			steps := []struct {
+				turn        string
+				total, last int64
+				want        int64
+			}{
+				{"one", 100, 100, 100},
+				{"two", 20, 20, 120},    // A real reset does not classify later turns.
+				{"three", 50, 30, 150},  // Continue the preceding cumulative series.
+				{"four", 50, 30, 150},   // A new turn can initially repeat the old snapshot.
+				{"four", 60, 10, 160},   // Only this new increment belongs to turn four.
+				{"five", 200, 200, 360}, // Reset larger than the preceding total.
+				{"six", 250, 50, 410},   // Session continuity can return after that reset.
+				{"seven", 300, 50, 460},
+				{"eight", 300, 300, 760}, // Equal totals can still be a proven fresh counter.
+				{"nine", 300, 300, 1060},
+			}
+			for _, step := range steps {
+				appendAccounting(t, path, accountingTurn(step.turn)+accountingToken(step.total, step.last))
+				if incremental {
+					if _, err := (&Scanner{Store: st}).Scan(ctx, []string{home}, false); err != nil {
+						t.Fatal(err)
+					}
+					accountingTotal(t, st, step.want)
+				}
+			}
+			for repeat := 0; repeat < 2; repeat++ {
+				if _, err := (&Scanner{Store: st}).Scan(ctx, []string{home}, false); err != nil {
+					t.Fatal(err)
+				}
+				accountingTotal(t, st, 1060)
+			}
+			if warnings, err := st.Warnings(ctx, 100); err != nil || len(warnings) != 0 {
+				t.Fatalf("unexpected warnings: %v, %v", warnings, err)
+			}
+		})
+	}
+}
+
+func TestMissingFirstSnapshotDoesNotSilentlyAssumeAnotherTurnReset(t *testing.T) {
+	st, home, path := accountingFixture(t)
+	ctx := context.Background()
+	appendAccounting(t, path, accountingMeta+accountingTurn("one")+accountingToken(100, 100)+
+		accountingTurn("two")+accountingToken(20, 20)+accountingTurn("three")+accountingToken(50, 10))
+	if _, err := (&Scanner{Store: st}).Scan(ctx, []string{home}, false); err != nil {
+		t.Fatal(err)
+	}
+	accountingTotal(t, st, 150)
+	warnings, err := st.Warnings(ctx, 100)
+	if err != nil || len(warnings) != 1 || warnings[0].Kind != "cumulative_boundary_unverified" {
+		t.Fatalf("uncertain boundary was silently treated as exact: %v, %v", warnings, err)
+	}
+	rows, err := st.Sessions(ctx, model.Filter{}, 100, 0)
+	if err != nil || len(rows) != 1 || rows[0].Confidence != model.ConfidenceGapFallback {
+		t.Fatalf("uncertain usage confidence: %v, %v", rows, err)
+	}
+}
+
+func TestRepeatedSnapshotAfterResetDoesNotCreateUsageOrMoveCorrections(t *testing.T) {
+	st, home, path := accountingFixture(t)
+	ctx := context.Background()
+	appendAccounting(t, path, accountingMeta+accountingTurn("one")+accountingToken(100, 100)+
+		accountingTurn("two")+accountingToken(20, 20)+accountingToken(50, 30))
+	scan := &Scanner{Store: st}
+	if _, err := scan.Scan(ctx, []string{home}, false); err != nil {
+		t.Fatal(err)
+	}
+	// Copied totals at a new turn must not inherit the preceding turn's scope.
+	appendAccounting(t, path, accountingTurn("three")+accountingToken(50, 30))
+	if _, err := scan.Scan(ctx, []string{home}, false); err != nil {
+		t.Fatal(err)
+	}
+	accountingTotal(t, st, 150)
+	if u, err := st.TurnUsage(ctx, "scope-test", "three"); err != nil || !u.IsZero() {
+		t.Fatalf("repeated snapshot created new-turn usage: %+v, %v", u, err)
+	}
+	correction := tokenLine("2026-09-08T01:01:00Z", usage(50, 15, 0, 0, 0, 50), usage(0, 15, 0, 0, 0, 0)) + "\n"
+	next := tokenLine("2026-09-08T01:02:00Z", usage(60, 15, 0, 0, 0, 60), usage(10, 0, 0, 0, 0, 10)) + "\n"
+	appendAccounting(t, path, correction+next)
+	if _, err := scan.Scan(ctx, []string{home}, false); err != nil {
+		t.Fatal(err)
+	}
+	accountingTotal(t, st, 160)
+	if u, err := st.TurnUsage(ctx, "scope-test", "two"); err != nil || u.CachedInput != 15 {
+		t.Fatalf("classification correction missed original usage: %+v, %v", u, err)
+	}
+}
+
+func TestRealMixedCounterVectorsDoNotRecountPreviousTurn(t *testing.T) {
+	st, home, path := accountingFixture(t)
+	ctx := context.Background()
+	// Numeric-only regression from a reconciled rollout. The final snapshot's
+	// six-field difference is exactly last_token_usage, despite an earlier reset.
+	first := usage(11388900, 11032320, 0, 64152, 29268, 11453052)
+	reset := usage(157821, 18176, 0, 621, 47, 158442)
+	previous := usage(11281076, 11060224, 0, 21940, 6881, 11303016)
+	current := usage(11486661, 11263744, 0, 22866, 7397, 11509527)
+	last := usage(205585, 203520, 0, 926, 516, 206511)
+	content := accountingMeta + accountingTurn("one") + tokenLine("2026-09-03T03:00:00Z", first, first) + "\n" +
+		accountingTurn("two") + tokenLine("2026-09-03T03:32:08Z", reset, reset) + "\n" +
+		tokenLine("2026-09-03T03:56:00Z", previous, usage(11123255, 11042048, 0, 21319, 6834, 11144574)) + "\n" +
+		accountingTurn("three") + tokenLine("2026-09-03T03:57:18Z", current, last) + "\n"
+	appendAccounting(t, path, content)
+	if _, err := (&Scanner{Store: st}).Scan(ctx, []string{home}, false); err != nil {
+		t.Fatal(err)
+	}
+	accountingTotal(t, st, 22962579)
+	want := model.TokenUsage{Input: 205585, CachedInput: 203520, Output: 926, ReasoningOutput: 516, Total: 206511}
+	if got, err := st.TurnUsage(ctx, "scope-test", "three"); err != nil || !got.Equal(want) {
+		t.Fatalf("new turn recounted preceding cumulative vector: %+v, %v", got, err)
+	}
+}
+
 func TestIngestFailureRollsBackEventModesAndCursor(t *testing.T) {
 	for _, failure := range []struct{ name, target string }{
 		{"event", "INSERT ON usage_events"},
