@@ -1,7 +1,9 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -34,5 +36,32 @@ func TestUpdateAPIRequiresExplicitConfirmationAndSameOrigin(t *testing.T) {
 	}
 	if s.Updates.Status().AutoCheck {
 		t.Fatal("preference not applied")
+	}
+}
+
+func TestUpdateDirectoryAPI(t *testing.T) {
+	s := &Server{Updates: updater.New(t.TempDir(), "2.6.1", "windows", "amd64", nil)}
+	want := filepath.Join(t.TempDir(), "downloads")
+	data, _ := json.Marshal(map[string]string{"download_dir": want})
+	r := httptest.NewRequest("POST", "http://127.0.0.1/api/v1/updates/preferences", strings.NewReader(string(data)))
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != 200 || s.Updates.Status().DownloadDir != want || !s.Updates.Status().AutoCheck {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	opened := false
+	s.Updates.SetDirectoryOpener(func(path string) error { opened = path == want; return nil })
+	r = httptest.NewRequest("POST", "http://127.0.0.1/api/v1/updates/open-directory", nil)
+	r.Header.Set("Origin", "https://example.com")
+	w = httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != 403 || opened {
+		t.Fatal("cross-origin folder open accepted")
+	}
+	r.Header.Del("Origin")
+	w = httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != 200 || !opened {
+		t.Fatal(w.Code, opened)
 	}
 }

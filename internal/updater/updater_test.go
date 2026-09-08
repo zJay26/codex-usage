@@ -37,6 +37,10 @@ func testManager(t *testing.T, corrupt bool, apply func(string, string, string) 
 	r, body, sums := fixture()
 	downloads := &atomic.Int32{}
 	m := New(t.TempDir(), "2.4.1", "windows", "amd64", apply)
+	downloadDir := filepath.Join(t.TempDir(), "downloads")
+	if err := m.SetPreferences(nil, &downloadDir); err != nil {
+		t.Fatal(err)
+	}
 	m.client = &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
 		data := ""
 		switch {

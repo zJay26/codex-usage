@@ -47,7 +47,11 @@ func newUpdater(paths config.Paths) *updater.Manager {
 			return platform.StartUpdateHelper(helper, path, paths.StateDir, job.Managed)
 		}
 	}
-	return updater.New(paths.StateDir, Version, runtime.GOOS, runtime.GOARCH, apply)
+	m := updater.New(paths.StateDir, Version, runtime.GOOS, runtime.GOARCH, apply)
+	if platform.HasGUI() {
+		m.SetDirectoryOpener(platform.OpenDirectory)
+	}
+	return m
 }
 
 func (c CLI) applyUpdate(args []string) error {

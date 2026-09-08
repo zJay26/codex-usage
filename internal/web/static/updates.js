@@ -4,6 +4,7 @@
   let timer;
   let initialVersion;
   let generation = 0;
+  let directoryDirty = false;
   const busy = () => ["downloading", "installing"].includes(status?.phase);
   const dialog = $("#updateDialog");
 
@@ -14,7 +15,16 @@
     $("#autoCheckUpdates").checked = status.auto_check;
     $("#autoCheckUpdates").disabled = pending;
     $("#checkUpdates").disabled = pending || status.checking || busy();
-    $("#installUpdate").disabled = pending || status.checking || busy() || !status.available || !status.can_install;
+    $("#installUpdate").disabled = directoryDirty || pending || status.checking || busy() || !status.available || !status.can_install;
+    if (!directoryDirty) $("#updateDownloadDir").value = status.download_dir || "";
+    $("#updateDownloadDir").disabled = pending || busy();
+    $("#saveUpdateDirectory").disabled = pending || busy() || !directoryDirty;
+    $("#resetUpdateDirectory").disabled = pending || busy();
+    $("#openUpdateDirectory").disabled = pending || directoryDirty || !status.can_open_download_dir;
+    $("#copyUpdateDirectory").disabled = !status.download_dir || directoryDirty;
+    $("#updateLastDownload").classList.toggle("hidden", !status.last_download);
+    $("#updateLastDownload").textContent = status.last_download ? t("update.lastDownload", {path: status.last_download}) : "";
+    $("#updateDirectoryHint").textContent = t(directoryDirty ? "update.directoryUnsaved" : "update.directoryHint");
     $("#updatePortable").classList.toggle("hidden", status.can_install);
     const phase = status.checking || pending ? "checking" : busy() || ["rolled_back", "failed"].includes(status.phase) ? status.phase : status.available ? "available" : status.phase === "updated" ? "updated" : status.latest_version ? "latestAlready" : "unchecked";
     $("#updateStatus").textContent = t(`update.${phase}`, { version: status.latest_version });
@@ -48,12 +58,13 @@
 
   async function action(endpoint, body) {
     const previousAutoCheck = status?.auto_check;
-    if (endpoint === "preferences") status.auto_check = body.auto_check;
+    if (endpoint === "preferences" && Object.hasOwn(body, "auto_check")) status.auto_check = body.auto_check;
     generation++;
     pending = true;
     render();
     try {
       status = await api(`/api/v1/updates/${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (endpoint === "preferences" && Object.hasOwn(body, "download_dir")) { directoryDirty = false; toast(t("update.directorySaved")); }
     } catch (error) {
       if (endpoint === "preferences") status.auto_check = previousAutoCheck;
       if (endpoint === "install") status.phase = "installing";
@@ -65,8 +76,17 @@
   $("#dismissUpdate").addEventListener("click", () => { writeStorage("codex-usage-update-dismissed", status.latest_version); render(); });
   $("#checkUpdates").addEventListener("click", () => action("check", {}));
   $("#autoCheckUpdates").addEventListener("change", (event) => action("preferences", { auto_check: event.target.checked }));
+  $("#updateDownloadDir").addEventListener("input", () => { directoryDirty = true; render(); });
+  $("#updateDownloadDir").addEventListener("keydown", (event) => { if (event.key === "Enter" && directoryDirty && !pending && !busy()) { event.preventDefault(); action("preferences", {download_dir: $("#updateDownloadDir").value}); } });
+  $("#saveUpdateDirectory").addEventListener("click", () => action("preferences", {download_dir: $("#updateDownloadDir").value}));
+  $("#resetUpdateDirectory").addEventListener("click", () => action("preferences", {download_dir: ""}));
+  $("#openUpdateDirectory").addEventListener("click", () => action("open-directory", {}));
+  $("#copyUpdateDirectory").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(status.download_dir); toast(t("update.directoryCopied")); }
+    catch { toast(t("update.copyFailed"), true); }
+  });
   $("#installUpdate").addEventListener("click", () => {
-    if (!status?.available || !status.can_install || busy() || pending) return;
+    if (!status?.available || !status.can_install || busy() || pending || directoryDirty) return;
     action("install", { version: status.latest_version, confirm: true });
   });
   window.addEventListener("codex-usage-locale-change", render);

@@ -169,6 +169,61 @@ test("updates require a choice, support later and disabling checks, and show rec
   expect(installs).toHaveLength(1);
 });
 
+test("update download directory saves, survives refresh, resets and opens only the saved path", async ({ page, context }, testInfo) => {
+  const defaultDir = "C:\\Users\\Demo\\Downloads\\codex-usage";
+  const chosenDir = "D:\\Downloads\\软件更新\\Codex Usage";
+  const update = { current_version: "2.6.1", latest_version: "2.7.0", available: true, can_install: true, auto_check: false, phase: "idle", download_dir: defaultDir, custom_download_dir: "", default_download_dir: defaultDir, can_open_download_dir: true, release_url: "https://github.com/zJay26/codex-usage/releases/tag/v2.7.0" };
+  const opened = [];
+  const installs = [];
+  await page.route("**/api/v1/updates**", async (route) => {
+    const request = route.request();
+    if (request.url().endsWith("/preferences")) {
+      const body = request.postDataJSON();
+      if (Object.hasOwn(body,"auto_check")) update.auto_check = body.auto_check;
+      if (Object.hasOwn(body,"download_dir")) { update.custom_download_dir = body.download_dir.trim(); update.download_dir = update.custom_download_dir || defaultDir; }
+    }
+    if (request.url().endsWith("/open-directory")) opened.push(update.download_dir);
+    if (request.url().endsWith("/install")) { installs.push(request.postDataJSON()); update.phase="downloading"; }
+    await route.fulfill({json:update});
+  });
+  await page.goto(dashboardURL);
+  await page.locator("#updateButton").click();
+  await expect(page.locator("#updateDownloadDir")).toHaveValue(defaultDir);
+  await page.locator("#updateDownloadDir").fill(chosenDir);
+  await expect(page.locator("#installUpdate")).toBeDisabled();
+  await expect(page.locator("#openUpdateDirectory")).toBeDisabled();
+  const refresh = page.waitForResponse((res) => res.url().endsWith("/api/v1/updates"));
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await refresh;
+  await expect(page.locator("#updateDownloadDir")).toHaveValue(chosenDir);
+  await page.locator("#updateDownloadDir").press("Enter");
+  await expect(page.locator("#saveUpdateDirectory")).toBeDisabled();
+  await expect(page.locator("#installUpdate")).toBeEnabled();
+  await expect(page.locator("#autoCheckUpdates")).not.toBeChecked();
+  await page.locator("#openUpdateDirectory").click();
+  await expect.poll(() => opened.length).toBe(1);
+  expect(opened).toEqual([chosenDir]);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {origin:baseURL});
+  await page.locator("#copyUpdateDirectory").click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(chosenDir);
+  await page.reload();
+  await page.locator("#updateButton").click();
+  await expect(page.locator("#updateDownloadDir")).toHaveValue(chosenDir);
+  await expect(page.locator("#updateDialog")).toHaveCSS("opacity","1");
+  await page.screenshot({path:testInfo.outputPath("download-directory-desktop.png"), animations:"disabled"});
+  await page.setViewportSize({width:390,height:844});
+  await page.evaluate(() => document.documentElement.dataset.theme="dark");
+  await expect(page.locator("#updateDialog")).toHaveCSS("color","rgb(241, 244, 240)");
+  await page.screenshot({path:testInfo.outputPath("download-directory-mobile.png"), animations:"disabled"});
+  expect(await page.locator("#updateDialog .dialog-frame").evaluate((el) => el.scrollWidth<=el.clientWidth)).toBe(true);
+  await page.locator("#resetUpdateDirectory").click();
+  await expect(page.locator("#updateDownloadDir")).toHaveValue(defaultDir);
+  await page.locator("#installUpdate").click();
+  await expect(page.locator("#updateDownloadDir")).toBeDisabled();
+  await expect(page.locator("#resetUpdateDirectory")).toBeDisabled();
+  expect(installs).toEqual([{version:"2.7.0",confirm:true}]);
+});
+
 test("preview updates preserve opt-out and never enable installation", async ({ page, request }) => {
   await page.goto(dashboardURL);
   await page.locator("#updateButton").click();

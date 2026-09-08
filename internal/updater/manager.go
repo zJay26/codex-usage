@@ -14,17 +14,22 @@ import (
 )
 
 type Status struct {
-	Current    string    `json:"current_version"`
-	Latest     string    `json:"latest_version"`
-	ReleaseURL string    `json:"release_url"`
-	AutoCheck  bool      `json:"auto_check"`
-	Available  bool      `json:"available"`
-	CanInstall bool      `json:"can_install"`
-	Checking   bool      `json:"checking"`
-	CheckedAt  time.Time `json:"checked_at"`
-	Phase      string    `json:"phase"`
-	Error      string    `json:"error,omitempty"`
-	Target     string    `json:"target_version,omitempty"`
+	DownloadDir        string    `json:"download_dir"`
+	CustomDownloadDir  string    `json:"custom_download_dir"`
+	DefaultDownloadDir string    `json:"default_download_dir"`
+	LastDownload       string    `json:"last_download,omitempty"`
+	CanOpenDownloadDir bool      `json:"can_open_download_dir"`
+	Current            string    `json:"current_version"`
+	Latest             string    `json:"latest_version"`
+	ReleaseURL         string    `json:"release_url"`
+	AutoCheck          bool      `json:"auto_check"`
+	Available          bool      `json:"available"`
+	CanInstall         bool      `json:"can_install"`
+	Checking           bool      `json:"checking"`
+	CheckedAt          time.Time `json:"checked_at"`
+	Phase              string    `json:"phase"`
+	Error              string    `json:"error,omitempty"`
+	Target             string    `json:"target_version,omitempty"`
 }
 type Result struct {
 	PID     int       `json:"pid"`
@@ -41,11 +46,14 @@ type Manager struct {
 	apply                    func(string, string, string) error
 	status                   Status
 	release                  Release
+	openDirectory            func(string) error
 }
 type saved struct {
-	AutoCheck bool      `json:"auto_check"`
-	CheckedAt time.Time `json:"checked_at"`
-	Release   Release   `json:"release"`
+	DownloadDir  string    `json:"download_dir,omitempty"`
+	LastDownload string    `json:"last_download,omitempty"`
+	AutoCheck    bool      `json:"auto_check"`
+	CheckedAt    time.Time `json:"checked_at"`
+	Release      Release   `json:"release"`
 }
 
 func New(stateDir, version, goos, arch string, apply func(string, string, string) error) *Manager {
@@ -56,6 +64,10 @@ func New(stateDir, version, goos, arch string, apply func(string, string, string
 	}
 	m.release = s.Release
 	m.status = Status{Current: version, AutoCheck: s.AutoCheck, CheckedAt: s.CheckedAt, Phase: "idle", CanInstall: apply != nil && m.asset != ""}
+	m.status.DefaultDownloadDir = defaultDownloadDirectory(stateDir)
+	m.status.CustomDownloadDir = s.DownloadDir
+	m.status.DownloadDir = m.effectiveDownloadDir(s.DownloadDir)
+	m.status.LastDownload = s.LastDownload
 	m.setRelease()
 	return m
 }
@@ -103,7 +115,7 @@ func WriteJSON(path string, value any) error {
 	}
 }
 func (m *Manager) save() error {
-	return WriteJSON(m.file(), saved{m.status.AutoCheck, m.status.CheckedAt, m.release})
+	return WriteJSON(m.file(), saved{AutoCheck: m.status.AutoCheck, CheckedAt: m.status.CheckedAt, Release: m.release, DownloadDir: m.status.CustomDownloadDir, LastDownload: m.status.LastDownload})
 }
 func ResultPath(dir string) string { return filepath.Join(dir, ".codex-usage-update-result.json") }
 func WriteResult(dir string, r Result) error {
@@ -133,15 +145,7 @@ func (m *Manager) Status() Status {
 }
 func busy(phase string) bool { return phase == "downloading" || phase == "installing" }
 func (m *Manager) SetAutoCheck(enabled bool) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	old := m.status.AutoCheck
-	m.status.AutoCheck = enabled
-	if err := m.save(); err != nil {
-		m.status.AutoCheck = old
-		return err
-	}
-	return nil
+	return m.SetPreferences(&enabled, nil)
 }
 func (m *Manager) Check(ctx context.Context) error {
 	m.Status()
@@ -227,6 +231,29 @@ func (m *Manager) Install(version string) error {
 	return nil
 }
 func (m *Manager) prepare(ctx context.Context, r Release) error {
+	m.mu.Lock()
+	downloadDir := m.status.DownloadDir
+	m.mu.Unlock()
+	if err := ensureDownloadDirectory(downloadDir); err != nil {
+		return err
+	}
+	downloadRun, err := os.MkdirTemp(downloadDir, "codex-usage-"+r.Tag+"-")
+	if err != nil {
+		return err
+	}
+	downloadPath := filepath.Join(downloadRun, m.asset)
+	digest, err := download(ctx, m.client, r, m.asset, downloadPath)
+	if err != nil {
+		_ = os.Remove(downloadRun)
+		return err
+	}
+	m.mu.Lock()
+	m.status.LastDownload = downloadPath
+	err = m.save()
+	m.mu.Unlock()
+	if err != nil {
+		return err
+	}
 	root := filepath.Join(m.stateDir, ".codex-usage-updates")
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return err
@@ -240,7 +267,7 @@ func (m *Manager) prepare(ctx context.Context, r Release) error {
 		name += ".exe"
 	}
 	path := filepath.Join(dir, name)
-	digest, err := download(ctx, m.client, r, m.asset, path)
+	err = stageDownload(downloadPath, path, digest)
 	if err != nil {
 		return err
 	}
