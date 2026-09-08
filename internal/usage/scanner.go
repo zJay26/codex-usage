@@ -608,7 +608,7 @@ func (s *Scanner) processRecord(
 			return &recordError{fmt.Errorf("invalid token vector")}
 		}
 		cursor.TurnID = firstNonEmpty(payload.TurnID, cursor.TurnID)
-		selectCounterScope(cursor, info)
+		unverifiedBoundary := selectCounterScope(cursor, info)
 		if err := s.inheritTurnProgress(ctx, cursor); err != nil {
 			return err
 		}
@@ -619,6 +619,12 @@ func (s *Scanner) processRecord(
 		}
 		if current.Equal(cursor.Cumulative) {
 			result.Duplicates++
+			// A repeated snapshot can establish that a new turn continued the
+			// prior counter. Persist that interpretation even without a new event;
+			// otherwise the next scan can inherit the previous turn's stale scope.
+			if cursor.SessionID != "" {
+				return s.Store.PutSessionProgress(ctx, cursor.SessionID, cursor.Segment, current, cursor.Accounting)
+			}
 			return nil
 		}
 		if current.Total > 0 && current.Total == cursor.Cumulative.Total {
@@ -654,6 +660,14 @@ func (s *Scanner) processRecord(
 		}
 		delta := current
 		confidence := model.ConfidenceExact
+		if unverifiedBoundary {
+			confidence = model.ConfidenceGapFallback
+			if err := s.Store.AddWarning(ctx, "cumulative_boundary_unverified", path,
+				fmt.Sprintf("offset=%d：新 Turn 的首个快照无法证明累计是否重置；保留此前基线按差值计量，可能缺少用量", offset)); err != nil {
+				return err
+			}
+			result.Warnings++
+		}
 		if !cursor.Cumulative.IsZero() {
 			if current.MonotonicFrom(cursor.Cumulative) {
 				delta = current.Sub(cursor.Cumulative)

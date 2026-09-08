@@ -119,6 +119,26 @@ func migrateAccounting(ctx context.Context, tx *sql.Tx, version int) error {
 			}
 		}
 	}
+	if version == 9 {
+		var hasHistory bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM usage_events WHERE provenance='session_jsonl')`).Scan(&hasHistory); err != nil {
+			return err
+		}
+		if hasHistory {
+			// v2.6.0-v2.6.2 could repeat an entire cumulative baseline after a
+			// turn change. New parser code cannot correct those existing deltas.
+			// Keep the ledger and cursors until an explicit rebuild is requested,
+			// and expose the issue before any background scan has run.
+			reason := "v2.6.0–v2.6.2 可能在新 Turn 重复累计历史用量。现有统计已保留；请先备份并核对源 JSONL，再确认重建以修正。已删除源文件的历史无法通过重建恢复。"
+			if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)
+				ON CONFLICT(key) DO UPDATE SET value=excluded.value`, historicalRebuildReasonKey, reason); err != nil {
+				return err
+			}
+			if err := (&Store{tx: tx}).AddWarning(ctx, "schema_upgrade_rebuild", "", reason); err != nil {
+				return err
+			}
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO meta VALUES('data_revision','1')`); err != nil {
 		return err
 	}
