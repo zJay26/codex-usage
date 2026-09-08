@@ -127,6 +127,7 @@ const state = {
   statusQualityNotes: [],
   dataQualityNotes: [],
   sessionSearch: "",
+  sessionView: "list", treeOffset: 0, treeItems: [], treeCollapsed: new Set(),
   requestSerial: { overview: 0, hourly: 0, hourlyContext: 0, daily: 0, day: 0, breakdown: 0, sessions: 0, estimates: 0 }
 };
 
@@ -153,22 +154,23 @@ const addDays = (value, amount) => {
   date.setDate(date.getDate() + amount);
   return date;
 };
-const todayKey = () => dateKey(new Date());
+let measurementTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const measuredDateKey = (date) => { const p=Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: measurementTimezone, year:"numeric",month:"2-digit",day:"2-digit" }).formatToParts(date).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`; };
+const todayKey = () => measuredDateKey(new Date());
 const emptyUsage = () => ({ input: 0, cached_input: 0, cache_write_input: 0, output: 0, reasoning_output: 0, total: 0 });
 const usageTotal = (usage = {}) => Number(usage.total || (Number(usage.input || 0) + Number(usage.output || 0)) || 0);
 const hourKey = (date) => `${dateKey(date)}T${pad2(date.getHours())}`;
 
 function latestCompleteHour(now = new Date()) {
-  const currentHour = new Date(now);
-  currentHour.setMinutes(0, 0, 0);
-  return new Date(currentHour.getTime() - 60 * 60_000);
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en",{timeZone:measurementTimezone,minute:"2-digit",second:"2-digit"}).formatToParts(now).map(p=>[p.type,p.value]));
+  return new Date(now.getTime() - Number(parts.minute)*60000 - Number(parts.second)*1000 - now.getMilliseconds() - 3600000);
 }
 
 function normalizeHourlyDate(value, now = new Date()) {
-  const fallback = dateKey(latestCompleteHour(now));
+  const fallback = measuredDateKey(latestCompleteHour(now));
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return fallback;
   const parsed = dateFromKey(value);
-  if (Number.isNaN(parsed.getTime()) || dateKey(parsed) !== value || value > dateKey(now)) return fallback;
+  if (Number.isNaN(parsed.getTime()) || dateKey(parsed) !== value || value > measuredDateKey(now)) return fallback;
   return value;
 }
 
@@ -188,20 +190,20 @@ function hourlyWindow(selectedDate = state.hourlyDate, now = new Date()) {
 }
 
 function formatClock(value) {
-  return value.toLocaleTimeString(i18n.getLocale(), { hour: "2-digit", minute: "2-digit", hour12: false });
+  return value.toLocaleTimeString(i18n.getLocale(), { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: measurementTimezone });
 }
 
 function formatHourWindow(start, end) {
-  const dateTime = (value) => `${i18n.formatDate(value, { month: "short", day: "numeric" })} ${formatClock(value)}`;
-  return `${dateTime(start)}–${dateKey(start) === dateKey(end) ? formatClock(end) : dateTime(end)}`;
+  const dateTime = (value) => `${i18n.formatDate(value, { month: "short", day: "numeric", timeZone: measurementTimezone })} ${formatClock(value)}`;
+  return `${dateTime(start)}–${measuredDateKey(start) === measuredDateKey(end) ? formatClock(end) : dateTime(end)}`;
 }
 
 function fillCompleteHours(rawPoints, windows) {
-  const byHour = new Map((rawPoints || []).map((point) => [point.date, point]));
+  const byHour = new Map((rawPoints || []).map((point) => [new Date(point.time).getTime(), point]));
   return Array.from({ length: windows.completeHours }, (_, index) => {
     const start = new Date(windows.chartStart.getTime() + index * 60 * 60_000);
-    const existing = byHour.get(hourKey(start));
-    return { date: hourKey(start), start, usage: existing?.usage || emptyUsage(), modes: existing?.modes };
+    const existing = byHour.get(start.getTime());
+    return { date: start.toISOString(), start, usage: existing?.usage || emptyUsage(), modes: existing?.modes };
   });
 }
 
@@ -267,7 +269,7 @@ const formatUSD = (value = "0") => {
   return `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: digits })}`;
 };
 const formatPercent = (value = 0) => `${(Number(value || 0) * 100).toFixed(1)}%`;
-const localTime = (value) => value ? i18n.formatDateTime(value) : "—";
+const localTime = (value) => value ? i18n.formatDateTime(value, {timeZone:measurementTimezone}) : "—";
 const shortId = (value = "") => value.length > 18 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value || "—";
 const shortPath = (value = "") => {
   const parts = String(value).split(/[\\/]/).filter(Boolean);
@@ -338,7 +340,7 @@ function filterQuery(extra = {}, filters = state.filters) {
 }
 
 function apiURL(path, extra = {}, filters = state.filters) {
-  const query = filterQuery({ ...extra, ...(["/api/v1/cost-estimate", "/api/v1/sessions", "/api/v1/session-estimates"].includes(path) ? { cost_basis: "codex_fast_weighted" } : {}) }, filters);
+  const query = filterQuery({ ...extra, ...(["/api/v1/cost-estimate", "/api/v1/sessions", "/api/v1/session-estimates", "/api/v1/session-tree"].includes(path) ? { cost_basis: "codex_fast_weighted" } : {}) }, filters);
   return query ? `${path}?${query}` : path;
 }
 
@@ -417,8 +419,11 @@ async function loadStatus() {
   const payload = await api("/api/v1/status");
   state.status = payload;
   const status = payload.status || {};
+  if (status.accounting_timezone) measurementTimezone = status.accounting_timezone;
+  $("#measurementTimezone").textContent = t("time.measurement", {zone:measurementTimezone});
   const revision = status.data_revision == null ? null : String(status.data_revision);
-  const changed = state.dataRevision !== null && revision !== null && revision !== state.dataRevision;
+  const changed = (state.dataRevision !== null && revision !== null && revision !== state.dataRevision) || (state.pricingRevision != null && payload.pricing_revision != null && state.pricingRevision !== payload.pricing_revision);
+  state.pricingRevision = payload.pricing_revision;
   if (changed) {
     invalidateDataCache();
     state.filterOptions = null;
@@ -439,6 +444,7 @@ async function loadStatus() {
   $(".scan-icon").classList.toggle("spin", Boolean(payload.scanning));
 
   const notes = [];
+  if (status.accounting_upgrade_note) notes.push(t("accounting.upgradeNote"));
   if (status.warning_count) notes.push(t("dynamic.warningCount", { count: i18n.formatNumber(status.warning_count) }));
   for (const home of status.codex_homes || []) {
     if (home.warning) notes.push(i18n.getLocale() === "en" ? `${t("warning.raw")}: ${home.warning}` : home.warning);
@@ -582,7 +588,7 @@ async function loadHourlyUsage({ preserve = false } = {}) {
   const serial = ++state.requestSerial.hourly;
   clearTimeout(hourlyContextTimer);
   state.requestSerial.hourlyContext += 1;
-  const windows = hourlyWindow();
+  let windows = hourlyWindow();
   state.hourlyDate = windows.date;
   syncHourlyNavigator(windows);
   const chart = $("#hourlyChart");
@@ -608,11 +614,12 @@ async function loadHourlyUsage({ preserve = false } = {}) {
   $("#trendHourlyPane").setAttribute("aria-busy", "true");
   try {
     const series = await api(apiURL("/api/v1/timeseries", {
-      since: windows.chartStart.toISOString(),
-      until: windows.chartEnd.toISOString(),
-      bucket: "hour"
+      date: windows.date, bucket: "hour", complete_hours: 1
     }));
     if (serial !== state.requestSerial.hourly) return;
+    if (series.window) { windows = { date:series.window.date,chartStart:new Date(series.window.start),chartEnd:new Date(series.window.end),completeHours:series.window.complete_hours }; }
+    state.hourlyWindow = windows;
+    syncHourlyNavigator(windows);
     state.hourlyPoints = fillCompleteHours(series.points || [], windows);
     state.hourlyLoaded = true;
     renderHourlyUsage(state.hourlyPoints, windows);
@@ -643,7 +650,7 @@ function syncHourlyNavigator(windows) {
   syncDatePickerDisplay("hourlyDate", windows.date);
   $("#nextHourDay").disabled = windows.date >= todayKey();
   $("#currentHourDay").disabled = windows.date === todayKey();
-  const displayDate = i18n.formatDate(windows.chartStart, { year: "numeric", month: "long", day: "numeric" });
+  const displayDate = i18n.formatDate(dateFromKey(windows.date), { year: "numeric", month: "long", day: "numeric" });
   $("#hourlyCaption").textContent = t("hourly.completeHours", { date: displayDate, count: windows.completeHours });
   $("#hourlyPoints").setAttribute("aria-label", t("hourly.rulerAria", { date: displayDate }));
 }
@@ -652,11 +659,8 @@ function prefetchHourlyNeighbors(windows) {
   const dates = [dateKey(addDays(windows.date, -1)), dateKey(addDays(windows.date, 1))]
     .filter((value) => value <= todayKey());
   for (const date of dates) {
-    const neighbor = hourlyWindow(date);
     api(apiURL("/api/v1/timeseries", {
-      since: neighbor.chartStart.toISOString(),
-      until: neighbor.chartEnd.toISOString(),
-      bucket: "hour"
+      date, complete_hours: 1, bucket: "hour"
     })).catch(() => {});
   }
 }
@@ -799,8 +803,8 @@ function renderHourlyLine(points) {
   const pointLayer = $("#hourlyPoints");
   const axis = $("#hourlyAxis");
   cancelAnimationFrame(pointLayer.hourlyScrubFrame || 0);
-  const selectedWindow = hourlyWindow(state.hourlyDate);
-  const displayDate = i18n.formatDate(selectedWindow.chartStart, { year: "numeric", month: "long", day: "numeric" });
+  const selectedWindow = state.hourlyWindow || hourlyWindow(state.hourlyDate);
+  const displayDate = i18n.formatDate(dateFromKey(selectedWindow.date), { year: "numeric", month: "long", day: "numeric" });
   pointLayer.setAttribute("aria-label", t("hourly.rulerAria", { date: displayDate }));
   if (!points.length) {
     line.innerHTML = "";
@@ -834,7 +838,7 @@ function renderHourlyLine(points) {
   axis.innerHTML = coordinates.filter(({ index }) => index % 3 === 0 || index === points.length - 1).map(({ point, index, x }) => {
     const clock = formatClock(point.start);
     const edge = index === 0 ? "edge-start" : index === points.length - 1 ? "edge-end" : "";
-    return `<time class="${edge}" datetime="${escapeHTML(point.date)}:00" style="--label-x:${(x / 10).toFixed(3)}%">${escapeHTML(clock)}</time>`;
+    return `<time class="${edge}" datetime="${escapeHTML(point.date)}" style="--label-x:${(x / 10).toFixed(3)}%">${escapeHTML(clock)}</time>`;
   }).join("");
 
   const selectPoint = (index, { immediateContext = false } = {}) => {
@@ -1256,7 +1260,10 @@ async function loadSessions({ preserve = false } = {}) {
   const estimateSerial = ++state.requestSerial.estimates;
   const bounds = rangeBounds(state.detailRange);
   const query = { ...bounds, limit: 100, compact: 1, q: state.sessionSearch };
-  const rowsURL = apiURL("/api/v1/sessions", { ...query, include_estimate: 0 });
+  const tree = state.sessionView === "tree";
+  const filterKey=JSON.stringify({query,filters:state.filters});
+  if(state.treeFilterKey!==filterKey) {state.treeFilterKey=filterKey;state.treeOffset=0;}
+  const rowsURL = apiURL(tree ? "/api/v1/session-tree" : "/api/v1/sessions", { ...query, ...(tree ? {limit:20,offset:state.treeOffset} : {include_estimate:0}) });
   const estimatesURL = apiURL("/api/v1/session-estimates", query);
   if (!preserve) $("#sessionRows").innerHTML = `<div class="empty-state">${escapeHTML(t("details.sessionsLoading"))}</div>`;
   $("#sessionsPanel").setAttribute("aria-busy", "true");
@@ -1264,8 +1271,13 @@ async function loadSessions({ preserve = false } = {}) {
     const sessions = await api(rowsURL);
     if (serial !== state.requestSerial.sessions) return;
     const items = sessions.items || [];
-    renderSessions(items, { estimatesPending: items.length > 0 });
-    if (items.length) loadSessionEstimates(estimatesURL, serial, estimateSerial);
+    state.treeItems = items;
+    renderSessions(items, { estimatesPending: !tree && items.length > 0 });
+    $("#treePagination").hidden = !tree;
+    $("#treePrevious").disabled = state.treeOffset === 0;
+    $("#treeNext").disabled = state.treeOffset + 20 >= Number(sessions.root_count || 0);
+    $("#treeCount").textContent = t("tree.roots",{count:sessions.root_count||0});
+    if (!tree && items.length) loadSessionEstimates(estimatesURL, serial, estimateSerial, sessions.data_revision);
   } catch (error) {
     if (serial === state.requestSerial.sessions) toast(t("dynamic.sessionsError", { error: error.message }), true);
   } finally {
@@ -1273,10 +1285,11 @@ async function loadSessions({ preserve = false } = {}) {
   }
 }
 
-async function loadSessionEstimates(url, sessionSerial, estimateSerial) {
+async function loadSessionEstimates(url, sessionSerial, estimateSerial, revision) {
   try {
     const payload = await api(url);
     if (sessionSerial !== state.requestSerial.sessions || estimateSerial !== state.requestSerial.estimates) return;
+    if (revision != null && payload.data_revision != null && revision !== payload.data_revision) { invalidateDataCache(); return loadSessions({preserve:true}); }
     patchSessionEstimates(payload.items || []);
   } catch (error) {
     if (sessionSerial !== state.requestSerial.sessions || estimateSerial !== state.requestSerial.estimates) return;
@@ -1379,23 +1392,27 @@ function renderSessions(items, { estimatesPending = false } = {}) {
     container.innerHTML = `<div class="empty-state">${escapeHTML(t(key))}</div>`;
     return;
   }
+  const tree = state.sessionView === "tree";
+  const ancestors = [];
+  if (tree) items = items.filter(item => { ancestors.length = item.depth;const visible = !ancestors.some(id => state.treeCollapsed.has(id));ancestors.push(item.session_id);return visible; });
   container.innerHTML = items.map((item) => {
     const presentation = sessionEstimatePresentation(item.estimate || {});
     const active = state.filters.session_id === item.session_id;
     const costCell = estimatesPending
       ? `<div class="session-metric session-cost pending" data-session-cost aria-busy="true"><small class="session-mobile-label">API</small><strong>${escapeHTML(t("details.costPending"))}</strong></div>`
       : `<div class="session-metric session-cost" data-session-cost title="${escapeHTML(presentation.title)}"><small class="session-mobile-label">API</small><strong>${escapeHTML(presentation.cost)}</strong>${presentation.partialCoverage ? `<small>${escapeHTML(presentation.partialCoverage)}</small>` : ""}</div>`;
-    return `<article class="session-row" data-session-id="${escapeHTML(item.session_id)}">
-    <div class="session-cell"><strong title="${escapeHTML(item.title || item.session_id)}">${escapeHTML(item.title || t("dynamic.untitledThread"))}</strong><small title="${escapeHTML(item.session_id)}">${escapeHTML(shortId(item.session_id))}</small></div>
+    return `<article class="session-row ${tree ? "task-tree-row" : ""}" style="--task-depth:${Math.min(item.depth||0,6)}" data-session-id="${escapeHTML(item.session_id)}">
+    <div class="session-cell task-name">${tree && item.children ? `<button type="button" class="tree-toggle pressable" data-tree-toggle="${escapeHTML(item.session_id)}" aria-expanded="${!state.treeCollapsed.has(item.session_id)}" aria-label="${escapeHTML(t("tree.toggle", {title:item.title || item.session_id}))}">${state.treeCollapsed.has(item.session_id) ? "＋" : "−"}</button>` : ""}<strong title="${escapeHTML(item.title || item.session_id)}">${escapeHTML(item.title || t("dynamic.untitledThread"))}</strong><small title="${escapeHTML(item.session_id)}">${escapeHTML(shortId(item.session_id))}</small>${tree ? `<small class="tree-note">${escapeHTML(item.context_only ? t("tree.context") : t("tree.own"))}${item.relationship_status ? ` · ${escapeHTML(t(`tree.${item.relationship_status}`))}` : ""}${item.forked_from_id ? ` · ${escapeHTML(t("tree.fork", {id:shortId(item.forked_from_id)}))}` : ""}</small>` : ""}</div>
     <div class="session-cell"><span title="${escapeHTML(item.project_path || t("common.notRecorded"))}">${escapeHTML(shortPath(item.project_path))}</span><small title="${escapeHTML(item.project_path || "")}">${escapeHTML(item.project_path || t("common.notRecorded"))}</small></div>
     <div class="session-cell"><strong title="${escapeHTML(item.model || t("common.unknownModel"))}">${escapeHTML(item.model || t("common.unknownModel"))}</strong><span>${escapeHTML(item.source || t("common.unknownSource"))}</span></div>
     <div class="session-cell"><span class="agent-badge">${escapeHTML(item.agent_type || "main")}</span><span class="confidence-badge ${escapeHTML(item.confidence)}">${confidenceLabel(item.confidence)}</span></div>
-    <div class="session-metric session-token" title="${fullToken(usageTotal(item.usage))} Token"><small class="session-mobile-label">${t("mode.totalTokens")}</small><strong>${formatToken(usageTotal(item.usage))}</strong><div class="mode-row-detail">${modeDetail(item,true)}</div></div>
+    <div class="session-metric session-token" title="${fullToken(usageTotal(item.usage))} Token"><small class="session-mobile-label">${t("mode.totalTokens")}</small><strong>${formatToken(usageTotal(item.usage))}</strong><div class="mode-row-detail">${modeDetail(item,true)}</div>${tree && item.children ? `<small class="tree-subtotal" title="${fullToken(usageTotal(item.subtree_usage))}">${escapeHTML(t("tree.subtotal"))} ${formatToken(usageTotal(item.subtree_usage))}</small>` : ""}</div>
     ${costCell}
     <div class="session-cell"><span>${escapeHTML(localTime(item.last_usage))}</span></div>
     <button class="session-filter pressable ${active ? "active" : ""}" type="button" data-session-filter="${escapeHTML(item.session_id)}" aria-pressed="${active}">${escapeHTML(t(active ? "details.cancelSessionFilter" : "details.onlySession"))}</button>
   </article>`;
   }).join("");
+  $$('[data-tree-toggle]', container).forEach(button => button.addEventListener("click", () => {const id=button.dataset.treeToggle;if(state.treeCollapsed.has(id)) state.treeCollapsed.delete(id);else state.treeCollapsed.add(id);renderSessions(state.treeItems);const toggle=$$('[data-tree-toggle]',container).find(b=>b.dataset.treeToggle===id);toggle?.focus();}));
   $$('[data-session-filter]', container).forEach((button) => button.addEventListener("click", () => {
     if (state.filters.session_id === button.dataset.sessionFilter) delete state.filters.session_id;
     else state.filters.session_id = button.dataset.sessionFilter;
@@ -1645,6 +1662,9 @@ function tablistKeydown(event, tabs, activate) {
 }
 
 function setupEvents() {
+  $$("[data-session-view]").forEach(button=>button.addEventListener("click",()=>{state.sessionView=button.dataset.sessionView;state.treeOffset=0;$$("[data-session-view]").forEach(b=>{const selected=b===button;b.classList.toggle("selected",selected);b.setAttribute("aria-pressed",String(selected));});loadSessions();}));
+  $("#treePrevious").addEventListener("click",()=>{state.treeOffset=Math.max(0,state.treeOffset-20);loadSessions();});
+  $("#treeNext").addEventListener("click",()=>{state.treeOffset+=20;loadSessions();});
   setupPressFeedback();
   setupDialogBehavior();
   $$('.nav-tab').forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
@@ -1872,10 +1892,8 @@ async function boot() {
       tab.tabIndex = selected ? 0 : -1;
     });
   }
-  await Promise.all([
-    loadStatus().catch((error) => toast(error.message, true)),
-    loadCurrentView()
-  ]);
+  await loadStatus().catch((error) => toast(error.message, true));
+  await loadCurrentView();
   startStatusPolling();
 }
 

@@ -208,6 +208,7 @@ func TestSuccessfulScanClearsResolvedFileChangeWarning(t *testing.T) {
 }
 
 func TestScannerSplitsOneSessionAcrossLocalDaysAtEachTokenEvent(t *testing.T) {
+	t.Setenv("CODEX_USAGE_TIMEZONE", "Asia/Shanghai")
 	previousLocal := time.Local
 	time.Local = time.FixedZone("UTC+8", 8*60*60)
 	t.Cleanup(func() { time.Local = previousLocal })

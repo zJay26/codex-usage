@@ -61,6 +61,7 @@ type Report struct {
 }
 
 type Builder struct {
+	location  *time.Location
 	basis     string
 	overrides map[string]Override
 	summary   aggregate
@@ -131,7 +132,7 @@ func (b *Builder) Add(event model.UsageEvent) error {
 	if !event.Timestamp.IsZero() {
 		date := event.LocalDate
 		if date == "" {
-			date = event.Timestamp.In(time.Local).Format("2006-01-02")
+			date = event.Timestamp.In(b.Location()).Format("2006-01-02")
 		}
 		pointAggregate := b.points[date]
 		if pointAggregate == nil {
@@ -178,12 +179,20 @@ func (b *Builder) Report() Report {
 
 // FillDaily inserts quiet zero-value points for local natural days. The until
 // bound remains exclusive when it lands exactly at local midnight.
-func FillDaily(report Report, since, until, now time.Time) (Report, error) {
+func FillDaily(report Report, since, until, now time.Time, locations ...*time.Location) (Report, error) {
+	loc := time.Local
+	if len(locations) > 0 && locations[0] != nil {
+		loc = locations[0]
+	}
+	localDay := func(value time.Time) time.Time {
+		local := value.In(loc)
+		return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
+	}
 	var start time.Time
 	if !since.IsZero() {
 		start = localDay(since)
 	} else if len(report.Points) > 0 {
-		start, _ = time.ParseInLocation("2006-01-02", report.Points[0].Date, time.Local)
+		start, _ = time.ParseInLocation("2006-01-02", report.Points[0].Date, loc)
 	}
 	if start.IsZero() {
 		return report, nil
@@ -193,7 +202,7 @@ func FillDaily(report Report, since, until, now time.Time) (Report, error) {
 		end = localDay(now).AddDate(0, 0, 1)
 	} else {
 		end = localDay(until)
-		localUntil := until.In(time.Local)
+		localUntil := until.In(loc)
 		if !localUntil.Equal(end) {
 			end = end.AddDate(0, 0, 1)
 		}
@@ -491,4 +500,11 @@ func maxInt64(left, right int64) int64 {
 		return left
 	}
 	return right
+}
+
+func (b *Builder) Location() *time.Location {
+	if b.location != nil {
+		return b.location
+	}
+	return time.Local
 }

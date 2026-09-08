@@ -169,7 +169,7 @@ func TestHourlyTimeseriesUsesInclusiveSinceAndExclusiveUntil(t *testing.T) {
 	}
 	defer st.Close()
 
-	base := time.Date(2026, 8, 10, 10, 59, 59, 0, time.Local)
+	base := time.Date(2026, 8, 10, 10, 59, 59, 0, st.Location())
 	events := []model.UsageEvent{
 		{ID: "before", Timestamp: base, SessionID: "hourly", Usage: model.TokenUsage{Input: 7, Output: 3, Total: 10}},
 		{ID: "start", Timestamp: base.Add(time.Second), SessionID: "hourly", Usage: model.TokenUsage{Input: 12, CachedInput: 4, Output: 8, ReasoningOutput: 3, Total: 20}},
@@ -184,7 +184,7 @@ func TestHourlyTimeseriesUsesInclusiveSinceAndExclusiveUntil(t *testing.T) {
 		}
 	}
 
-	since := time.Date(2026, 8, 10, 11, 0, 0, 0, time.Local)
+	since := time.Date(2026, 8, 10, 11, 0, 0, 0, st.Location())
 	until := since.Add(time.Hour)
 	filter := model.Filter{Since: since, Until: until}
 	points, err := st.Timeseries(ctx, filter, "hour")
@@ -648,8 +648,8 @@ func TestV4MigrationPreservesHistoryUntilSingleMetadataRebuildApproved(t *testin
 	if err := st.db.QueryRow(`SELECT value FROM meta WHERE key='schema_version'`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != "8" {
-		t.Fatalf("schema version = %q, want 8", version)
+	if version != "9" {
+		t.Fatalf("schema version = %q, want 9", version)
 	}
 	if err := st.ResetHistorical(ctx); err != nil {
 		t.Fatal(err)
@@ -686,6 +686,7 @@ func TestCanonicalViewsUseOnlyJSONL(t *testing.T) {
 }
 
 func TestTimeseriesKeepsIngestionLocalDateAfterTimezoneChange(t *testing.T) {
+	t.Setenv("CODEX_USAGE_TIMEZONE", "Asia/Shanghai")
 	previousLocal := time.Local
 	time.Local = time.FixedZone("UTC+8", 8*60*60)
 	t.Cleanup(func() { time.Local = previousLocal })

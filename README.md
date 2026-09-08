@@ -44,6 +44,16 @@ chmod +x codex-usage
 ./codex-usage install
 ```
 
+macOS（Apple Silicon；Intel 将 `arm64` 改为 `amd64`）：
+
+```bash
+curl -fL https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-arm64 -o codex-usage
+chmod +x codex-usage
+./codex-usage install
+```
+
+通过用户 LaunchAgent 登录自启，无需 `sudo`。校验、数据位置及未公证程序的打开方式见 [macOS 安装说明](docs/macos.md)。
+
 需要 arm64？从 [最新 Release](https://github.com/zJay26/codex-usage/releases/latest) 下载 `windows-arm64.exe` 或 `linux-arm64`。下载后可先用同页的 `SHA256SUMS` 校验。英文安装输出使用：
 
 ```text
@@ -62,7 +72,7 @@ Linux 服务器没有桌面环境时，程序会打印 SSH 隧道命令。在自
 
 | 你想知道 | codex-usage 给出的视图 |
 |---|---|
-| 哪台电脑用了 Token？ | 每台 Windows、WSL 或 Linux 主机独立统计，不混入账号在其他电脑上的用量 |
+| 哪台电脑用了 Token？ | 每台 Windows、WSL、Linux 或 macOS 主机独立统计，不混入账号在其他电脑上的用量 |
 | 用在了什么模型和内容类型？ | 模型及 Input、Cached、Cache Write、Output、Reasoning 构成 |
 | 哪项工作驱动了用量？ | 项目、Thread、Session，以及主任务、Subagent、Guardian、Memory 归属 |
 | 什么时候发生？ | 今天、7 日、30 日、全部历史，以及按自然日查看详情 |
@@ -73,16 +83,17 @@ Linux 服务器没有桌面环境时，程序会打印 SSH 隧道命令。在自
 
 | 功能 | 你得到什么 |
 |---|---|
-| 逐电脑归属 | 每台电脑独立统计，清楚区分公司电脑、家用电脑、Windows、WSL 或 Linux |
+| 逐电脑归属 | 每台电脑独立统计，清楚区分公司电脑、家用电脑、Windows、WSL、Linux 或 macOS |
 | 历史与增量同步 | 安装后先整理已有记录，后续用量自动进入 Dashboard |
 | 可选软件更新 | 自动检查并提示新版本，由用户选择下载和安装，也可关闭自动检查 |
 | 总量与 Fast | 以总 Token 为主，概览下方显示常规 / Fast 拆分；趋势、模型和任务同时显示总量与 Fast |
+| 主任务与子任务树 | 折叠查看明确父子关系，区分本任务与含子任务用量；费用列仅计本任务 |
 | Session 搜索与筛选 | 按 Thread、Session ID、项目、模型或来源搜索；快捷筛选再次点击即可取消 |
 | 每日下钻 | 查看连续趋势、月历、零用量日和任意一天的模型构成 |
 | 多维明细 | 按模型、Token 类型、来源、项目、Thread、Session 和 Agent 理解用量 |
 | 等价费用 | 总览和 Session 都显示 API 等价费用；无法定价的部分会明确标出，不会假装免费 |
 | 本地与隐私 | 数据只留在当前电脑，不上传对话，也不依赖中心服务器 |
-| 轻量部署 | Windows / Linux、amd64 / arm64 都是单文件程序，无需另装数据库 |
+| 轻量部署 | Windows / Linux / macOS、amd64 / arm64 都是单文件程序，无需另装数据库 |
 | 中英双语 | Dashboard 与 CLI 都可切换简体中文或 English |
 
 ## 范围与边界
@@ -126,7 +137,7 @@ flowchart LR
 
 程序只读当前电脑的 `CODEX_HOME`。它优先从 Codex 状态库取得 session 路径、项目和 Thread 信息，再流式读取 `sessions/` 与 `archived_sessions/` 中的 JSONL。
 
-每个 session 里的 Token 是累计值。程序在**每一条** `token_count` 记录处保存累计向量，用“本次累计值 - 上次累计值”得到这一次的增量，并把增量归到该条记录时间戳对应的本地自然日；不会按 session 的最后更新时间把整段历史塞到同一天。重复扫描仍由稳定事件 ID 与游标去重。超大的 prompt、回复和工具输出记录会被跳过，不会整行载入内存，也不会写进数据库。
+Token 记录可能按 Session 累计，也可能按 Turn 累计。扫描器保存计量范围与上次 Token 所属 Turn；新 Turn 的 `total_token_usage` 与 `last_token_usage` 相等时建立 Turn 范围，数值小于、等于或大于上一 Turn 均重新起算。旧版 Session 累计仍保留跨 Turn 基线。程序在**每一条** `token_count` 记录处保存累计向量，用“本次累计值 - 上次累计值”得到这一次的增量，并把增量归到该条记录时间戳对应的本地自然日；不会按 session 的最后更新时间把整段历史塞到同一天。重复扫描仍由稳定事件 ID 与游标去重。超大的 prompt、回复和工具输出记录会被跳过，不会整行载入内存，也不会写进数据库。
 
 Codex 状态库只用于发现 rollout 路径并补充标题、项目等 metadata；其中的 `tokens_used` 不参与 Token 总量。OpenAI 的 [`account/usage/read`](https://learn.chatgpt.com/docs/app-server#7-token-usage-chatgpt) 是服务端账号 Token 活动；本工具只统计当前电脑的本地 JSONL，两者范围不同。
 
@@ -134,14 +145,18 @@ Codex 状态库只用于发现 rollout 路径并补充标题、项目等 metadat
 
 - 一个物理 JSONL 的 owner session 由第一条 `session_meta` 固定，后续复制进来的父 `session_meta` 不会改写归属
 - `forked_from_id` 文件中“子线程 metadata → 父线程历史快照 → 父线程 metadata”这一前缀只建立累计基线，不计作子线程新消耗
-- 同一 session 恢复到新文件时使用 session 级累计高水位；重复累计快照不会再次入账
+- Session 范围保留累计高水位；Turn 范围按任务与 Turn 的稳定快照标识排重。升级前 Session 出现在新的物理文件、旧标识无法安全核对时保留统计并提示重建
 - `total_tokens` 不变但 Cached Input、Cache Write、Reasoning 等分类被修正时，会修正原事件，而不是当作重复忽略
 
 ### 3. 文件与日期稳定性
 
 扫描器每次都用状态库路径与 `sessions/`、`archived_sessions/` 目录取并集，避免状态库漏行。Windows 普通路径与 `\\?\` 扩展路径会归一为同一物理文件。检测到截断、原范围重写、后补出的 fork 重放边界或解析规则升级时，程序会保留现有统计并提示需要重建；只有用户在 Dashboard 明确确认，或显式运行 `codex-usage scan --rebuild` 后，才会清除派生索引并从当前仍存在的全部 JSONL 重建。已删除 JSONL 对应的数据届时可能无法恢复。
 
-每个事件在入库时保存本地日期与小时，因此之后修改系统时区不会让既有历史在查询时换日。新版 Codex 在新 Turn 开始时重置累计值，但当该值与 `last_token_usage` 完全一致时，扫描器会把它作为精确增量处理，不再误报数据质量问题。真正无法完整核对的累计边界、坏记录、无效时间戳和待确认重建仍会明确提示；文件改写或截断问题经后续扫描确认恢复后，过时的红色提示会自动消除。
+计量时区以 IANA 名称保存在数据库，所有进程与远程浏览器使用同一时区；页脚显示当前时区。每个事件保留自然日标签，小时用真实 UTC 起点标识，夏令时重复小时不会合并。首次创建数据库前可设置 `CODEX_USAGE_TIMEZONE`，之后更改系统或进程时区不改变该库的计量时区。新版 Codex 在新 Turn 开始时重置累计值，但当该值与 `last_token_usage` 完全一致时，扫描器会把它作为精确增量处理，不再误报数据质量问题。真正无法完整核对的累计边界、坏记录、无效时间戳和待确认重建仍会明确提示；文件改写或截断问题经后续扫描确认恢复后，过时的红色提示会自动消除。
+
+事件、模式、累计进度与文件游标按文件原子提交；写入失败整笔回滚并保留重试位置。未完整写入的 JSONL 尾行不会提前消费，包括尚未写到 `type` 字段的前缀。
+
+**v2.6.0 升级保留旧账，修复适用于新增记录。** 旧版本已经漏计的历史需在核对源文件覆盖并备份后显式重算；不会因升级自动删除旧统计。查询快照、搜索范围、任务树和性能证据见 [v2.6 技术说明](docs/accounting-v2.6.md)。
 
 ### 4. 展示与服务
 
@@ -210,12 +225,12 @@ Dashboard 支持 `?lang=en|zh-CN` 和页头语言按钮；URL 参数优先于已
 
 ## 数据存在哪里
 
-| 内容 | Windows | Linux |
-|---|---|---|
-| Codex Home | `%USERPROFILE%\.codex` | `~/.codex` |
-| codex-usage 状态 | `%LOCALAPPDATA%\codex-usage` | `${XDG_DATA_HOME:-~/.local/share}/codex-usage` |
-| 安装后的程序 | `%LOCALAPPDATA%\Programs\codex-usage\codex-usage.exe` | `~/.local/bin/codex-usage` |
-| SQLite | `...\codex-usage\usage.sqlite` | `.../codex-usage/usage.sqlite` |
+| 内容 | Windows | Linux | macOS |
+|---|---|---| --- |
+| Codex Home | `%USERPROFILE%\.codex` | `~/.codex` | `~/.codex` |
+| codex-usage 状态 | `%LOCALAPPDATA%\codex-usage` | `${XDG_DATA_HOME:-~/.local/share}/codex-usage` | `~/Library/Application Support/codex-usage` |
+| 安装后的程序 | `%LOCALAPPDATA%\Programs\codex-usage\codex-usage.exe` | `~/.local/bin/codex-usage` | `.../codex-usage/bin/codex-usage` |
+| SQLite | `...\codex-usage\usage.sqlite` | `.../codex-usage/usage.sqlite` | `.../codex-usage/usage.sqlite` |
 
 设置 `CODEX_USAGE_HOME` 可以覆盖工具自己的状态目录。不要在多台电脑之间同步这个目录，否则逐电脑边界会失真。
 

@@ -16,7 +16,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/zJay26/codex-usage/internal/model"
@@ -24,7 +23,7 @@ import (
 )
 
 const (
-	schemaVersion               = 8
+	schemaVersion               = 9
 	historicalRebuildReasonKey  = "historical_rebuild_required"
 	pricingAggregatableEventSQL = `e.input_tokens>=0 AND e.cached_input_tokens>=0 AND e.cache_write_input_tokens>=0
 		AND e.output_tokens>=0 AND e.reasoning_output_tokens>=0 AND e.total_tokens>=0
@@ -50,10 +49,12 @@ type Store struct {
 	readDB   *sql.DB
 	path     string
 	machine  model.Machine
-	revision atomic.Uint64
+	tx       *sql.Tx
+	location *time.Location
 }
 
 type FileCursor struct {
+	Accounting    AccountingState
 	Path          string
 	CodexHome     string
 	Size          int64
@@ -76,20 +77,30 @@ type FileCursor struct {
 	InheritedBaseline bool
 }
 
+// AccountingState records the interpretation of total_token_usage separately
+// from the context turn, which may change before the next token snapshot.
+type AccountingState struct {
+	LegacyHistory bool   `json:"legacy_history,omitempty"`
+	Scope         string `json:"scope,omitempty"`
+	LastTurnID    string `json:"last_turn_id,omitempty"`
+}
+
 type Status struct {
-	ModeBackfill     []DiagnosticProgress `json:"mode_backfill"`
-	Machine          model.Machine        `json:"machine"`
-	DatabasePath     string               `json:"database_path"`
-	AccountingMode   string               `json:"accounting_mode"`
-	LastScan         *time.Time           `json:"last_scan,omitempty"`
-	OTelLastReceived *time.Time           `json:"otel_last_received,omitempty"`
-	OTelActive       bool                 `json:"otel_active"`
-	EventCount       int64                `json:"event_count"`
-	SessionCount     int64                `json:"session_count"`
-	WarningCount     int64                `json:"warning_count"`
-	DataRevision     uint64               `json:"data_revision"`
-	CoverageGaps     []CoverageGap        `json:"coverage_gaps,omitempty"`
-	CodexHomes       []HomeStatus         `json:"codex_homes"`
+	ModeBackfill          []DiagnosticProgress `json:"mode_backfill"`
+	Machine               model.Machine        `json:"machine"`
+	DatabasePath          string               `json:"database_path"`
+	AccountingMode        string               `json:"accounting_mode"`
+	LastScan              *time.Time           `json:"last_scan,omitempty"`
+	OTelLastReceived      *time.Time           `json:"otel_last_received,omitempty"`
+	OTelActive            bool                 `json:"otel_active"`
+	EventCount            int64                `json:"event_count"`
+	SessionCount          int64                `json:"session_count"`
+	WarningCount          int64                `json:"warning_count"`
+	AccountingTimezone    string               `json:"accounting_timezone"`
+	AccountingUpgradeNote string               `json:"accounting_upgrade_note,omitempty"`
+	DataRevision          uint64               `json:"data_revision"`
+	CoverageGaps          []CoverageGap        `json:"coverage_gaps,omitempty"`
+	CodexHomes            []HomeStatus         `json:"codex_homes"`
 }
 
 // CoverageGap is retained only so the /api/v1/status response remains source
@@ -134,13 +145,13 @@ func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", sqliteURI(path, ""))
+	db, err := sql.Open("sqlite", sqliteURI(path, "_txlock=immediate"))
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	for _, pragma := range []string{
 		"PRAGMA journal_mode=WAL",
@@ -155,6 +166,10 @@ func Open(path string) (*Store, error) {
 	}
 	s := &Store{db: db, path: path}
 	if err := s.migrate(ctx); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := s.initTimezone(ctx); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -176,7 +191,6 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("打开只读查询池: %w", err)
 	}
 	s.readDB = readDB
-	s.revision.Store(1)
 	_ = os.Chmod(path, 0o600)
 	return s, nil
 }
@@ -190,9 +204,11 @@ func (s *Store) Close() error {
 }
 func (s *Store) DBPath() string         { return s.path }
 func (s *Store) Machine() model.Machine { return s.machine }
-func (s *Store) Revision() uint64       { return s.revision.Load() }
 
-func (s *Store) reader() *sql.DB {
+func (s *Store) reader() database {
+	if s.tx != nil {
+		return s.tx
+	}
 	if s.readDB != nil {
 		return s.readDB
 	}
@@ -354,6 +370,12 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := migrateServiceModes(ctx, tx); err != nil {
 		return err
 	}
+	if err := migrateRelationships(ctx, tx); err != nil {
+		return err
+	}
+	if err := migrateAccounting(ctx, tx, databaseVersion); err != nil {
+		return err
+	}
 	if databaseVersion > 0 && databaseVersion < 7 {
 		// Parser migrations can invalidate every derived event. Preserve the old
 		// ledger until the user explicitly approves a rebuild instead of deleting
@@ -450,7 +472,7 @@ func migrateWarningsV2(ctx context.Context, tx *sql.Tx) error {
 
 func (s *Store) ensureMachine(ctx context.Context) error {
 	var raw string
-	err := s.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key='machine'`).Scan(&raw)
+	err := s.writer().QueryRowContext(ctx, `SELECT value FROM meta WHERE key='machine'`).Scan(&raw)
 	if err == nil {
 		if err := json.Unmarshal([]byte(raw), &s.machine); err == nil && s.machine.ID != "" {
 			return nil
@@ -471,7 +493,7 @@ func (s *Store) ensureMachine(ctx context.Context) error {
 		Arch:     runtime.GOARCH,
 	}
 	data, _ := json.Marshal(s.machine)
-	_, err = s.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES('machine',?)
+	_, err = s.writer().ExecContext(ctx, `INSERT INTO meta(key,value) VALUES('machine',?)
 		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, string(data))
 	return err
 }
@@ -480,7 +502,7 @@ func (s *Store) UpsertSession(ctx context.Context, in model.SessionInfo) error {
 	if in.SessionID == "" {
 		return nil
 	}
-	result, err := s.db.ExecContext(ctx, `INSERT INTO sessions(
+	_, err := s.writer().ExecContext(ctx, `INSERT INTO sessions(
 		session_id,rollout_path,codex_home,title,project_path,model,source,thread_source,
 		agent_type,cli_version,tokens_used,created_at,updated_at,archived)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
@@ -517,17 +539,14 @@ func (s *Store) UpsertSession(ctx context.Context, in model.SessionInfo) error {
 	if err != nil {
 		return err
 	}
-	if changed, rowsErr := result.RowsAffected(); rowsErr == nil && changed > 0 {
-		s.revision.Add(1)
-	}
-	return nil
+	return s.PutRelationship(ctx, in.SessionID, in.ParentSessionID, in.ForkedFromID)
 }
 
 func (s *Store) Session(ctx context.Context, id string) (model.SessionInfo, error) {
 	var out model.SessionInfo
 	var created, updated int64
 	var archived int
-	err := s.db.QueryRowContext(ctx, `SELECT session_id,rollout_path,codex_home,title,
+	err := s.writer().QueryRowContext(ctx, `SELECT session_id,rollout_path,codex_home,title,
 		project_path,model,source,thread_source,agent_type,cli_version,tokens_used,
 		created_at,updated_at,archived FROM sessions WHERE session_id=?`, id).Scan(
 		&out.SessionID, &out.RolloutPath, &out.CodexHome, &out.Title, &out.ProjectPath,
@@ -559,7 +578,7 @@ func (s *Store) InsertEvent(ctx context.Context, event model.UsageEvent, originP
 	}
 	event.Usage = event.Usage.Compatible()
 	if !event.Timestamp.IsZero() {
-		local := event.Timestamp.In(time.Local)
+		local := event.Timestamp.In(s.Location())
 		if event.LocalDate == "" {
 			event.LocalDate = local.Format("2006-01-02")
 		}
@@ -567,24 +586,22 @@ func (s *Store) InsertEvent(ctx context.Context, event model.UsageEvent, originP
 			event.LocalHour = local.Format("2006-01-02T15")
 		}
 	}
-	result, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO usage_events(
+	result, err := s.writer().ExecContext(ctx, `INSERT OR IGNORE INTO usage_events(
 		id,usage_at,local_date,local_hour,segment,observed_at,machine_id,session_id,turn_id,model,source,agent_type,
 		project_path,thread_title,input_tokens,cached_input_tokens,cache_write_input_tokens,
-		output_tokens,reasoning_output_tokens,total_tokens,provenance,confidence,codex_home,origin_path,service_mode,service_tier,mode_source)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		output_tokens,reasoning_output_tokens,total_tokens,provenance,confidence,codex_home,origin_path,service_mode,service_tier,mode_source,hour_start)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		event.ID, unixOrZero(event.Timestamp), event.LocalDate, event.LocalHour, event.Segment,
 		unixOrZero(event.ObservedAt), event.MachineID,
 		event.SessionID, event.TurnID, event.Model, event.Source, defaultAgent(event.AgentType),
 		event.ProjectPath, event.ThreadTitle, event.Usage.Input, event.Usage.CachedInput,
 		event.Usage.CacheWriteInput, event.Usage.Output, event.Usage.ReasoningOutput,
-		event.Usage.Total, event.Provenance, event.Confidence, event.CodexHome, originPath, event.ServiceMode.ServiceMode, event.ServiceTier, event.ModeSource)
+		event.Usage.Total, event.Provenance, event.Confidence, event.CodexHome, originPath, event.ServiceMode.ServiceMode, event.ServiceTier, event.ModeSource, unixOrZero(hourStart(event.Timestamp.In(s.Location()))))
 	if err != nil {
 		return false, err
 	}
 	n, _ := result.RowsAffected()
-	if n > 0 {
-		s.revision.Add(1)
-	}
+
 	return n > 0, nil
 }
 
@@ -603,6 +620,7 @@ func (s *Store) CorrectEventUsage(
 	eventID, sessionID string,
 	segment int64,
 	difference model.TokenUsage,
+	scopeTurn ...string,
 ) (bool, error) {
 	if difference.IsZero() {
 		return false, nil
@@ -610,16 +628,20 @@ func (s *Store) CorrectEventUsage(
 	if difference.Total != 0 || difference.Input+difference.Output != 0 {
 		return false, fmt.Errorf("classification correction changed additive totals: %s", difference)
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, commit, rollback, err := s.beginWrite(ctx)
 	if err != nil {
 		return false, err
 	}
-	defer tx.Rollback()
+	defer rollback()
+	turnID := ""
+	if len(scopeTurn) > 0 {
+		turnID = scopeTurn[0]
+	}
 	if eventID != "" {
-		var anchorSession string
+		var anchorSession, anchorTurn string
 		var anchorSegment int64
-		err = tx.QueryRowContext(ctx, `SELECT session_id,segment FROM usage_events
-			WHERE id=? AND provenance='session_jsonl'`, eventID).Scan(&anchorSession, &anchorSegment)
+		err = tx.QueryRowContext(ctx, `SELECT session_id,segment,turn_id FROM usage_events
+			WHERE id=? AND provenance='session_jsonl'`, eventID).Scan(&anchorSession, &anchorSegment, &anchorTurn)
 		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}
@@ -629,7 +651,7 @@ func (s *Store) CorrectEventUsage(
 		if sessionID == "" {
 			sessionID = anchorSession
 		}
-		if sessionID != anchorSession || segment != anchorSegment {
+		if sessionID != anchorSession || (turnID == "" && segment != anchorSegment) || (turnID != "" && turnID != anchorTurn) {
 			return false, fmt.Errorf("classification correction anchor does not match session segment")
 		}
 	}
@@ -637,10 +659,16 @@ func (s *Store) CorrectEventUsage(
 		return false, nil
 	}
 
+	scopeWhere := "session_id=? AND segment=?"
+	scopeArgs := []any{sessionID, segment}
+	if turnID != "" {
+		scopeWhere = "session_id=? AND turn_id=?"
+		scopeArgs = []any{sessionID, turnID}
+	}
 	databaseRows, err := tx.QueryContext(ctx, `SELECT id,input_tokens,cached_input_tokens,
 		cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens
-		FROM usage_events WHERE session_id=? AND segment=? AND provenance='session_jsonl'
-		ORDER BY usage_at DESC,observed_at DESC,rowid DESC`, sessionID, segment)
+		FROM usage_events WHERE `+scopeWhere+` AND provenance='session_jsonl'
+		ORDER BY usage_at DESC,observed_at DESC,rowid DESC`, scopeArgs...)
 	if err != nil {
 		return false, err
 	}
@@ -698,10 +726,9 @@ func (s *Store) CorrectEventUsage(
 	if !changed {
 		return false, nil
 	}
-	if err := tx.Commit(); err != nil {
+	if err := commit(); err != nil {
 		return false, err
 	}
-	s.revision.Add(1)
 	return true, nil
 }
 
@@ -825,13 +852,13 @@ func minInt64(left, right int64) int64 {
 
 func (s *Store) GetCursor(ctx context.Context, path string) (FileCursor, bool, error) {
 	var out FileCursor
-	var cumulative string
-	err := s.db.QueryRowContext(ctx, `SELECT path,codex_home,size,modified_nanos,offset,
-		session_id,forked_from_id,replay_offset,model,turn_id,project_path,source,agent_type,segment,prefix_hash,last_event_id,cumulative_json
+	var cumulative, accounting string
+	err := s.writer().QueryRowContext(ctx, `SELECT path,codex_home,size,modified_nanos,offset,
+		session_id,forked_from_id,replay_offset,model,turn_id,project_path,source,agent_type,segment,prefix_hash,last_event_id,cumulative_json,accounting_json
 		FROM file_cursors WHERE path=?`, path).Scan(
 		&out.Path, &out.CodexHome, &out.Size, &out.ModifiedNanos, &out.Offset,
 		&out.SessionID, &out.ForkedFromID, &out.ReplayOffset, &out.Model, &out.TurnID, &out.ProjectPath, &out.Source,
-		&out.AgentType, &out.Segment, &out.PrefixHash, &out.LastEventID, &cumulative)
+		&out.AgentType, &out.Segment, &out.PrefixHash, &out.LastEventID, &cumulative, &accounting)
 	if errors.Is(err, sql.ErrNoRows) {
 		return FileCursor{Path: path}, false, nil
 	}
@@ -839,14 +866,19 @@ func (s *Store) GetCursor(ctx context.Context, path string) (FileCursor, bool, e
 		return FileCursor{}, false, err
 	}
 	_ = json.Unmarshal([]byte(cumulative), &out.Cumulative)
+	_ = json.Unmarshal([]byte(accounting), &out.Accounting)
+	if out.Accounting.LastTurnID == "" {
+		out.Accounting.LastTurnID = out.TurnID
+	}
 	return out, true, nil
 }
 
 func (s *Store) PutCursor(ctx context.Context, in FileCursor) error {
 	data, _ := json.Marshal(in.Cumulative)
-	_, err := s.db.ExecContext(ctx, `INSERT INTO file_cursors(
+	accounting, _ := json.Marshal(in.Accounting)
+	_, err := s.writer().ExecContext(ctx, `INSERT INTO file_cursors(
 		path,codex_home,size,modified_nanos,offset,session_id,forked_from_id,replay_offset,model,turn_id,project_path,
-		source,agent_type,segment,prefix_hash,last_event_id,cumulative_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		source,agent_type,segment,prefix_hash,last_event_id,cumulative_json,accounting_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(path) DO UPDATE SET codex_home=excluded.codex_home,size=excluded.size,
 		modified_nanos=excluded.modified_nanos,offset=excluded.offset,session_id=excluded.session_id,
 		forked_from_id=excluded.forked_from_id,replay_offset=excluded.replay_offset,
@@ -854,11 +886,11 @@ func (s *Store) PutCursor(ctx context.Context, in FileCursor) error {
 		source=excluded.source,agent_type=excluded.agent_type,segment=excluded.segment,
 		prefix_hash=excluded.prefix_hash,
 		last_event_id=excluded.last_event_id,
-		cumulative_json=excluded.cumulative_json`,
+		cumulative_json=excluded.cumulative_json,accounting_json=excluded.accounting_json`,
 		in.Path, in.CodexHome, in.Size, in.ModifiedNanos, in.Offset, in.SessionID,
 		in.ForkedFromID, in.ReplayOffset,
 		in.Model, in.TurnID, in.ProjectPath, in.Source, defaultAgent(in.AgentType),
-		in.Segment, in.PrefixHash, in.LastEventID, string(data))
+		in.Segment, in.PrefixHash, in.LastEventID, string(data), string(accounting))
 	return err
 }
 
@@ -868,7 +900,7 @@ func (s *Store) GetSessionProgress(ctx context.Context, sessionID string) (model
 	}
 	var raw string
 	var segment int64
-	err := s.db.QueryRowContext(ctx, `SELECT cumulative_json,segment
+	err := s.writer().QueryRowContext(ctx, `SELECT cumulative_json,segment
 		FROM session_cursors WHERE session_id=?`, sessionID).Scan(&raw, &segment)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.TokenUsage{}, 0, false, nil
@@ -883,16 +915,23 @@ func (s *Store) GetSessionProgress(ctx context.Context, sessionID string) (model
 	return usage, segment, true, nil
 }
 
-func (s *Store) PutSessionProgress(ctx context.Context, sessionID string, segment int64, usage model.TokenUsage) error {
+func (s *Store) PutSessionProgress(ctx context.Context, sessionID string, segment int64, usage model.TokenUsage, accounting ...AccountingState) error {
 	if sessionID == "" || usage.IsZero() {
 		return nil
 	}
 	raw, _ := json.Marshal(usage)
-	_, err := s.db.ExecContext(ctx, `INSERT INTO session_cursors(
+	_, err := s.writer().ExecContext(ctx, `INSERT INTO session_cursors(
 		session_id,segment,cumulative_json,updated_at) VALUES(?,?,?,?)
 		ON CONFLICT(session_id) DO UPDATE SET segment=excluded.segment,
 		cumulative_json=excluded.cumulative_json,updated_at=excluded.updated_at`,
 		sessionID, segment, string(raw), time.Now().Unix())
+	if err != nil {
+		return err
+	}
+	if len(accounting) > 0 {
+		data, _ := json.Marshal(accounting[0])
+		_, err = s.writer().ExecContext(ctx, `UPDATE session_cursors SET accounting_json=? WHERE session_id=?`, string(data), sessionID)
+	}
 	return err
 }
 
@@ -909,7 +948,9 @@ func (s *Store) ResetHistorical(ctx context.Context) error {
 		`DELETE FROM sessions`,
 		`DELETE FROM scan_state`,
 		`DELETE FROM warnings`,
-		`DELETE FROM meta WHERE key='historical_rebuild_required'`,
+		`DELETE FROM meta WHERE key IN ('historical_rebuild_required','accounting_upgrade_note')`,
+		`DELETE FROM mode_file_backfills`,
+		`DELETE FROM relationship_backfills`,
 		`DROP TABLE IF EXISTS otel_series`,
 		`DROP TABLE IF EXISTS otel_coverage`,
 	} {
@@ -920,7 +961,6 @@ func (s *Store) ResetHistorical(ctx context.Context) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	s.revision.Add(1)
 	return nil
 }
 
@@ -928,7 +968,7 @@ func (s *Store) ResetHistorical(ctx context.Context) error {
 // or discarding the existing derived ledger.
 func (s *Store) HistoricalRebuildReason(ctx context.Context) (string, bool, error) {
 	var reason string
-	err := s.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, historicalRebuildReasonKey).Scan(&reason)
+	err := s.writer().QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, historicalRebuildReasonKey).Scan(&reason)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, nil
 	}
@@ -941,7 +981,7 @@ func (s *Store) HistoricalRebuildReason(ctx context.Context) (string, bool, erro
 func (s *Store) AddWarning(ctx context.Context, kind, path, detail string) error {
 	fp := hashString(kind + "\x00" + path + "\x00" + detail)
 	now := time.Now().Unix()
-	_, err := s.db.ExecContext(ctx, `INSERT INTO warnings(
+	_, err := s.writer().ExecContext(ctx, `INSERT INTO warnings(
 		created_at,first_seen,occurrences,kind,path,detail,fingerprint) VALUES(?,?,?,?,?,?,?)
 		ON CONFLICT(kind,path) DO UPDATE SET created_at=excluded.created_at,
 		detail=excluded.detail,fingerprint=excluded.fingerprint,
@@ -979,13 +1019,13 @@ func (s *Store) Warnings(ctx context.Context, limit int) ([]model.Warning, error
 // has successfully reconciled the same path. It never clears parser, timestamp,
 // or malformed-record warnings that may still describe an accounting gap.
 func (s *Store) ClearResolvedFileWarnings(ctx context.Context, path string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM warnings
+	_, err := s.writer().ExecContext(ctx, `DELETE FROM warnings
 		WHERE path=? AND kind IN ('rollout_rewritten','rollout_truncated')`, path)
 	return err
 }
 
 func (s *Store) UpdateScanState(ctx context.Context, home, stateDB string, files int64, warning string) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO scan_state(
+	_, err := s.writer().ExecContext(ctx, `INSERT INTO scan_state(
 		codex_home,last_scan,state_db,files_scanned,warning) VALUES(?,?,?,?,?)
 		ON CONFLICT(codex_home) DO UPDATE SET last_scan=excluded.last_scan,
 		state_db=excluded.state_db,files_scanned=excluded.files_scanned,warning=excluded.warning`,
@@ -1029,7 +1069,7 @@ func (s *Store) Timeseries(ctx context.Context, filter model.Filter, bucket stri
 	}
 	bucketColumn := "e.local_date"
 	if bucket == "hour" {
-		bucketColumn = "e.local_hour"
+		bucketColumn = "e.hour_start"
 	}
 	rows, err := s.reader().QueryContext(ctx, `SELECT `+bucketColumn+`,
 		COALESCE(SUM(e.input_tokens),0),COALESCE(SUM(e.cached_input_tokens),0),
@@ -1056,6 +1096,11 @@ func (s *Store) Timeseries(ctx context.Context, filter model.Filter, bucket stri
 			layout = "2006-01-02T15"
 		}
 		parsed, _ := time.ParseInLocation(layout, key, time.UTC)
+		if bucket == "hour" {
+			unix, _ := strconv.ParseInt(key, 10, 64)
+			parsed = time.Unix(unix, 0).UTC()
+			key = parsed.In(s.Location()).Format("2006-01-02T15")
+		}
 		modes.Complete(usage)
 		out = append(out, model.Point{Time: parsed, Date: key, Usage: usage, Modes: modes})
 	}
@@ -1156,49 +1201,17 @@ func (s *Store) Dimensions(ctx context.Context) (DimensionValues, error) {
 }
 
 func (s *Store) Sessions(ctx context.Context, filter model.Filter, limit, offset int) ([]SessionRow, error) {
-	if limit <= 0 || limit > 500 {
+	if limit != -1 && (limit <= 0 || limit > 500) {
 		limit = 100
 	}
 	if offset < 0 {
 		offset = 0
 	}
 	where, args := attributionWhere(filter, "e", true)
-	if filter.Search != "" {
-		pattern := "%" + strings.NewReplacer("~", "~~", "%", "~%", "_", "~_").Replace(filter.Search) + "%"
-		where += ` AND (e.session_id LIKE ? ESCAPE '~'
-			OR e.thread_title LIKE ? ESCAPE '~'
-			OR e.project_path LIKE ? ESCAPE '~'
-			OR e.model LIKE ? ESCAPE '~'
-			OR e.source LIKE ? ESCAPE '~'
-			OR EXISTS (SELECT 1 FROM sessions search_session
-				WHERE search_session.session_id=e.session_id AND (
-					search_session.title LIKE ? ESCAPE '~'
-					OR search_session.project_path LIKE ? ESCAPE '~'
-					OR search_session.model LIKE ? ESCAPE '~'
-					OR search_session.source LIKE ? ESCAPE '~')))`
-		for range 9 {
-			args = append(args, pattern)
-		}
-	}
+	query := sessionRowsSQL(where)
+	baseArgs := append([]any{}, args...)
 	args = append(args, limit, offset)
-	query := `SELECT COALESCE(NULLIF(e.session_id,''),'jsonl-unknown') sid,
-		COALESCE(MAX(s.rollout_path),''),COALESCE(MAX(s.codex_home),MAX(e.codex_home),''),
-		COALESCE(MAX(NULLIF(s.title,'')),MAX(e.thread_title),''),
-		COALESCE(MAX(NULLIF(s.project_path,'')),MAX(e.project_path),''),
-		COALESCE(MAX(NULLIF(s.model,'')),MAX(e.model),''),
-		COALESCE(MAX(NULLIF(s.source,'')),MAX(e.source),''),
-		COALESCE(MAX(s.thread_source),''),COALESCE(MAX(NULLIF(s.agent_type,'')),MAX(e.agent_type),'main'),
-		COALESCE(MAX(s.cli_version),''),COALESCE(MAX(s.tokens_used),0),
-		COALESCE(MAX(s.created_at),0),COALESCE(MAX(s.updated_at),0),COALESCE(MAX(s.archived),0),
-		SUM(e.input_tokens),SUM(e.cached_input_tokens),SUM(e.cache_write_input_tokens),
-		SUM(e.output_tokens),SUM(e.reasoning_output_tokens),SUM(e.total_tokens),
-		COUNT(*),CASE
-			WHEN MAX(e.confidence='aggregate_only')=1 THEN 'aggregate_only'
-			WHEN MAX(e.confidence='gap_fallback')=1 THEN 'gap_fallback'
-			ELSE COALESCE(MAX(e.confidence),'')
-		END,COALESCE(MAX(e.usage_at),0),` + modeUsageSQL + `
-		FROM usage_events e LEFT JOIN sessions s ON s.session_id=e.session_id
-		WHERE ` + where + ` GROUP BY sid ORDER BY MAX(e.usage_at) DESC LIMIT ? OFFSET ?`
+	args = append(args, baseArgs...)
 	rows, err := s.reader().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -1242,9 +1255,12 @@ func (s *Store) WalkSessionPricingAggregates(ctx context.Context, filter model.F
 	placeholders := make([]string, 0, len(sessionIDs))
 	for _, sessionID := range sessionIDs {
 		placeholders = append(placeholders, "?")
+		if sessionID == "jsonl-unknown" {
+			sessionID = ""
+		}
 		args = append(args, sessionID)
 	}
-	where += " AND " + sessionExpr + " IN (" + strings.Join(placeholders, ",") + ")"
+	where += " AND e.session_id IN (" + strings.Join(placeholders, ",") + ")"
 	rows, err := s.reader().QueryContext(ctx, `SELECT `+sessionExpr+`,e.model,e.service_mode,
 		COALESCE(MIN(NULLIF(e.usage_at,0)),0),
 		COALESCE(SUM(e.input_tokens),0),COALESCE(SUM(e.cached_input_tokens),0),
@@ -1489,9 +1505,14 @@ func scanUsageEvent(scanner usageEventScanner) (model.UsageEvent, error) {
 }
 
 func (s *Store) Status(ctx context.Context) (Status, error) {
-	out := Status{Machine: s.machine, DatabasePath: s.path, AccountingMode: "jsonl_only", DataRevision: s.revision.Load()}
+	revision, err := s.DataRevision(ctx)
+	if err != nil {
+		return Status{}, err
+	}
+	out := Status{Machine: s.machine, DatabasePath: s.path, AccountingMode: "jsonl_only", DataRevision: revision, AccountingTimezone: s.Location().String()}
 	out.ModeBackfill, _ = s.DiagnosticProgress(ctx)
 	reader := s.reader()
+	_ = reader.QueryRowContext(ctx, `SELECT value FROM meta WHERE key='accounting_upgrade_note'`).Scan(&out.AccountingUpgradeNote)
 	if err := reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_events`).Scan(&out.EventCount); err != nil {
 		return out, err
 	}
@@ -1529,7 +1550,7 @@ func (s *Store) Status(ctx context.Context) (Status, error) {
 }
 
 func (s *Store) Vacuum(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, `PRAGMA optimize`)
+	_, err := s.writer().ExecContext(ctx, `PRAGMA optimize`)
 	return err
 }
 
@@ -1571,6 +1592,11 @@ func canonicalWhere(filter model.Filter, alias string) (string, []any) {
 		parts = append(parts, alias+".service_mode='fast'")
 	case "unknown":
 		parts = append(parts, alias+".service_mode='unknown'")
+	}
+	if filter.Search != "" {
+		predicate, values := sessionSearchSQL(alias, filter.Search)
+		parts = append(parts, predicate)
+		args = append(args, values...)
 	}
 	return strings.Join(parts, " AND "), args
 }
@@ -1653,6 +1679,7 @@ func ReadStateThreads(ctx context.Context, path, codexHome string) ([]model.Sess
 			return nil, err
 		}
 		item.CodexHome = codexHome
+		item.ParentSessionID = model.SpawnParent(json.RawMessage(item.Source))
 		item.Source = compactStateSource(item.Source)
 		item.AgentType = model.ClassifyAgent(item.Source, item.ThreadSource, agentRole)
 		item.CreatedAt = flexibleEpoch(created)
@@ -1660,7 +1687,20 @@ func ReadStateThreads(ctx context.Context, path, codexHome string) ([]model.Sess
 		item.Archived = archived != 0
 		out = append(out, item)
 	}
-	return out, threadRows.Err()
+	if err := threadRows.Err(); err != nil {
+		return nil, err
+	}
+	threadRows.Close()
+	edges, err := readSpawnEdges(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if out[i].ParentSessionID == "" {
+			out[i].ParentSessionID = edges[out[i].SessionID]
+		}
+	}
+	return out, nil
 }
 
 func FindLatestStateDB(home string) string {

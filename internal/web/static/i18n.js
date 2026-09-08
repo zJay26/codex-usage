@@ -4,6 +4,22 @@
   const STORAGE_KEY = "codex-usage-locale";
   const catalogs = {
     "zh-CN": {
+      "accounting.upgradeNote": "已保留升级前的统计。本次计量修复对新增记录生效；若需重算历史，请先核对源 JSONL 是否齐全，再显式运行 scan --rebuild。",
+      "tree.list": "列表",
+      "tree.view": "任务树",
+      "tree.toggle": "折叠或展开 {title}",
+      "tree.context": "仅显示父任务关系",
+      "tree.own": "本任务",
+      "tree.subtotal": "含子任务",
+      "tree.missing_parent": "父任务记录缺失",
+      "tree.cycle": "父子关系循环，已断开显示",
+      "tree.fork": "Fork 自 {id}",
+      "tree.roots": "共 {count} 个根任务",
+      "tree.previous": "上一页",
+      "tree.next": "下一页",
+      "tree.scope": "合计包含当前筛选范围内的子任务；费用列仅计本任务",
+      "time.measurement": "计量时区：{zone}",
+
       "update.title": "软件更新",
       "update.close": "关闭更新",
       "update.review": "查看更新",
@@ -357,6 +373,22 @@
       "rebuild.confirm": "同意并重建"
     },
     en: {
+      "accounting.upgradeNote": "Pre-upgrade history is preserved. Accounting fixes apply to new records; verify retained JSONL coverage before explicitly running scan --rebuild for historical recalculation.",
+      "tree.list": "List",
+      "tree.view": "Task tree",
+      "tree.toggle": "Collapse or expand {title}",
+      "tree.context": "Ancestor context only",
+      "tree.own": "Own usage",
+      "tree.subtotal": "With subtasks",
+      "tree.missing_parent": "Parent record missing",
+      "tree.cycle": "Cyclic parent link detached",
+      "tree.fork": "Fork of {id}",
+      "tree.roots": "{count} root tasks",
+      "tree.previous": "Previous",
+      "tree.next": "Next",
+      "tree.scope": "Subtotals include filtered subtasks; costs show own usage only",
+      "time.measurement": "Accounting time zone: {zone}",
+
       "update.title": "Software updates",
       "update.close": "Close updates",
       "update.review": "Review update",

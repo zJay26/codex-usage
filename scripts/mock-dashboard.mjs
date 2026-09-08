@@ -86,7 +86,7 @@ function costEstimate(url) {
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://127.0.0.1:${port}`);
   if (url.pathname === "/api/v1/status") return json(response, {
-    version: "2.5.0-preview", scanning: false,
+    version: "2.6.0-preview", scanning: false,
     status: {
       machine: { id: "62c0172d-36c4-4ec9-a074-02b9ec2b45e1", label: "WORKSTATION-19 · windows", hostname: "WORKSTATION-19", os: "windows", arch: "amd64" },
       last_scan: now.toISOString(), accounting_mode: "jsonl_only", otel_active: false,
@@ -120,15 +120,16 @@ const server = http.createServer(async (request, response) => {
     const unit = bucket === "hour" ? 3_600_000 : 86_400_000;
     const fallbackCount = bucket === "hour" ? 24 : 30;
     const fallbackEnd = bucket === "hour" ? new Date(new Date(now).setMinutes(0, 0, 0)) : now;
-    const start = bucket === "hour" && url.searchParams.get("since") ? new Date(url.searchParams.get("since")) : new Date(fallbackEnd.getTime() - fallbackCount * unit);
-    const end = bucket === "hour" && url.searchParams.get("until") ? new Date(url.searchParams.get("until")) : fallbackEnd;
+    let start = bucket === "hour" && url.searchParams.get("since") ? new Date(url.searchParams.get("since")) : new Date(fallbackEnd.getTime() - fallbackCount * unit);
+    let end = bucket === "hour" && url.searchParams.get("until") ? new Date(url.searchParams.get("until")) : fallbackEnd;
+    if(bucket === "hour" && url.searchParams.get("date")){start=rangeDate(url.searchParams.get("date"));end=new Date(start);end.setDate(end.getDate()+1);if(url.searchParams.get("complete_hours")==="1" && end>fallbackEnd) end=fallbackEnd;}
     const count = bucket === "hour" ? Math.max(0, Math.min(744, Math.round((end.getTime() - start.getTime()) / unit))) : fallbackCount;
     const points = Array.from({ length: count }, (_, index) => {
       const time = bucket === "hour" ? new Date(start.getTime() + index * unit) : new Date(now.getTime() - (count - 1 - index) * unit);
       const wave = 150_000 + Math.round((Math.sin(index * .72) + 1.35) * 145_000) + index * 8500;
       return { time: time.toISOString(), date: bucket === "hour" ? localHourKey(time) : localDateKey(time), usage: { input: Math.round(wave * .78), cached_input: Math.round(wave * .42), cache_write_input: 0, output: Math.round(wave * .22), reasoning_output: Math.round(wave * .08), total: wave } };
     });
-    return json(response, { bucket, points });
+    return json(response, { bucket, points, window:bucket==="hour" ? {date:localDateKey(start),start:start.toISOString(),end:end.toISOString(),complete_hours:count}:null });
   }
   if (url.pathname === "/api/v1/breakdown") {
     const dimension = url.searchParams.get("dimension");
@@ -143,7 +144,7 @@ const server = http.createServer(async (request, response) => {
     sources: ["codex_desktop", "codex_cli_rs"],
     projects: ["C:\\dev\\render-lab", "/srv/inference"]
   });
-  if (url.pathname === "/api/v1/sessions" || url.pathname === "/api/v1/session-estimates") {
+  if (url.pathname === "/api/v1/sessions" || url.pathname === "/api/v1/session-estimates" || url.pathname === "/api/v1/session-tree") {
     const sessions = [
       { session_id: "019fb24a-f4dd-7673-9b7d-225d26f2b141", title: "实现逐电脑 Token 统计与可视化", project_path: "C:\\dev\\codex-usage", model: "gpt-5.4", source: "codex_desktop", agent_type: "main", usage: { ...usage, total: 2_920_000 }, confidence: "exact", last_usage: now.toISOString() },
       { session_id: "019fa142-1051-72bd-aa0f-975efd2bf6c2", title: "Linux 渲染任务诊断", project_path: "/srv/inference/render", model: "gpt-5.5-codex", source: "codex_cli_rs", agent_type: "subagent", usage: { ...usage, total: 1_180_000 }, confidence: "gap_fallback", last_usage: new Date(now.getTime() - 3600000).toISOString() },
@@ -167,6 +168,10 @@ const server = http.createServer(async (request, response) => {
       responseItems = responseItems.map((item) => ({ session_id: item.session_id, estimate: item.estimate }));
     } else if (["0", "false"].includes((url.searchParams.get("include_estimate") || "").toLowerCase())) {
       responseItems = responseItems.map(({ estimate, ...item }) => item);
+    }
+    if(url.pathname === "/api/v1/session-tree") {
+      responseItems=responseItems.map((item,index)=>({...item,depth:index?1:0,parent_id:index?responseItems[0].session_id:"",children:index?0:responseItems.length-1,subtree_usage:index?item.usage:{...item.usage,total:responseItems.reduce((sum,x)=>sum+x.usage.total,0)}}));
+      return json(response,{items:responseItems,root_count:1,limit:20});
     }
     return json(response, { items: responseItems });
   }

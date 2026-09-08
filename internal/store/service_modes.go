@@ -59,7 +59,7 @@ func (s *Store) ModeFileChecked(ctx context.Context, path string) bool {
 	return s.reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM mode_file_backfills WHERE path=?`, path).Scan(&count) == nil && count > 0
 }
 func (s *Store) MarkModeFileChecked(ctx context.Context, path string) error {
-	_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO mode_file_backfills VALUES(?)`, path)
+	_, err := s.writer().ExecContext(ctx, `INSERT OR IGNORE INTO mode_file_backfills VALUES(?)`, path)
 	return err
 }
 
@@ -101,12 +101,11 @@ func (s *Store) PutTurnModes(ctx context.Context, items []TurnMode) error {
 	if len(items) == 0 {
 		return nil
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, commit, rollback, err := s.beginWrite(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
-	var changed int64
+	defer rollback()
 	for _, item := range items {
 		if item.SessionID == "" || item.TurnID == "" {
 			continue
@@ -143,19 +142,14 @@ func (s *Store) PutTurnModes(ctx context.Context, items []TurnMode) error {
 		if runtime.GOOS == "windows" {
 			homeExpr = "lower(codex_home)"
 		}
-		result, err := tx.ExecContext(ctx, `UPDATE usage_events SET service_mode=?,service_tier=?,mode_source=?
+		_, err = tx.ExecContext(ctx, `UPDATE usage_events SET service_mode=?,service_tier=?,mode_source=?
 			WHERE session_id=? AND turn_id=? AND `+homeExpr+`=?`, m.ServiceMode, m.ServiceTier, m.ModeSource, item.SessionID, item.TurnID, key)
 		if err != nil {
 			return err
 		}
-		n, _ := result.RowsAffected()
-		changed += n
 	}
-	if err := tx.Commit(); err != nil {
+	if err := commit(); err != nil {
 		return err
-	}
-	if changed > 0 {
-		s.revision.Add(1)
 	}
 	return nil
 }
@@ -178,7 +172,7 @@ func (s *Store) DiagnosticCursor(ctx context.Context, path string) (DiagnosticPr
 }
 
 func (s *Store) PutDiagnosticCursor(ctx context.Context, p DiagnosticProgress) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO diagnostic_cursors VALUES(?,?,?,?,?) ON CONFLICT(path)
+	_, err := s.writer().ExecContext(ctx, `INSERT INTO diagnostic_cursors VALUES(?,?,?,?,?) ON CONFLICT(path)
 		DO UPDATE SET last_id=excluded.last_id,last_ts=excluded.last_ts,target_id=excluded.target_id,state=excluded.state`, p.Path, p.LastID, p.LastTS, p.TargetID, p.State)
 	return err
 }

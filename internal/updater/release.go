@@ -56,7 +56,7 @@ type Release struct {
 }
 
 func AssetName(goos, arch string) string {
-	if (goos != "windows" && goos != "linux") || (arch != "amd64" && arch != "arm64") {
+	if (goos != "windows" && goos != "linux" && goos != "darwin") || (arch != "amd64" && arch != "arm64") {
 		return ""
 	}
 	name := "codex-usage-" + goos + "-" + arch

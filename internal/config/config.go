@@ -84,6 +84,9 @@ func ResolvePaths() (Paths, error) {
 		}
 		stateDir = filepath.Join(base, "codex-usage")
 		installDir = filepath.Join(base, "Programs", "codex-usage")
+	} else if runtime.GOOS == "darwin" {
+		stateDir = filepath.Join(home, "Library", "Application Support", "codex-usage")
+		installDir = filepath.Join(stateDir, "bin")
 	} else {
 		data := os.Getenv("XDG_DATA_HOME")
 		if data == "" {

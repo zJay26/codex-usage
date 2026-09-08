@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -26,7 +28,7 @@ type sessionQueryKey struct {
 
 type sessionEstimateCacheKey struct {
 	Query           sessionQueryKey
-	PricingRevision uint64
+	PricingRevision [32]byte
 }
 
 type sessionResponseItem struct {
@@ -56,8 +58,12 @@ func makeSessionQueryKey(revision uint64, filter model.Filter, limit, offset int
 	}
 }
 
-func sessionRequestParameters(r *http.Request) (model.Filter, int, int, bool, error) {
-	filter, err := parseFilter(r.URL.Query())
+func sessionRequestParameters(r *http.Request, locations ...*time.Location) (model.Filter, int, int, bool, error) {
+	loc := time.Local
+	if len(locations) > 0 {
+		loc = locations[0]
+	}
+	filter, err := parseFilterIn(r.URL.Query(), loc)
 	if err != nil {
 		return model.Filter{}, 0, 0, false, err
 	}
@@ -73,12 +79,20 @@ func sessionRequestParameters(r *http.Request) (model.Filter, int, int, bool, er
 	return filter, limit, offset, compact, nil
 }
 
-func (s *Server) cachedSessionRows(ctx context.Context, filter model.Filter, limit, offset int, compact bool) (sessionQueryKey, []store.SessionRow, bool, error) {
-	key := makeSessionQueryKey(s.Store.Revision(), filter, limit, offset, compact)
+func (s *Server) cachedSessionRows(ctx context.Context, filter model.Filter, limit, offset int, compact bool, snapshots ...*store.Store) (sessionQueryKey, []store.SessionRow, bool, error) {
+	data := s.Store
+	if len(snapshots) > 0 {
+		data = snapshots[0]
+	}
+	revision, err := data.DataRevision(ctx)
+	if err != nil {
+		return sessionQueryKey{}, nil, false, err
+	}
+	key := makeSessionQueryKey(revision, filter, limit, offset, compact)
 	if items, ok := s.sessionRowsCache.get(key); ok {
 		return key, items, true, nil
 	}
-	items, err := s.Store.Sessions(ctx, filter, limit, offset)
+	items, err := data.Sessions(ctx, filter, limit, offset)
 	if err != nil {
 		return key, nil, false, err
 	}
@@ -91,26 +105,34 @@ func (s *Server) cachedSessionRows(ctx context.Context, filter model.Filter, lim
 	return key, items, false, nil
 }
 
-func (s *Server) cachedSessionEstimates(ctx context.Context, queryKey sessionQueryKey, filter model.Filter, items []store.SessionRow) ([]sessionEstimateResponseItem, bool, error) {
-	cacheKey := sessionEstimateCacheKey{Query: queryKey, PricingRevision: s.pricingRevision.Load()}
-	if estimates, ok := s.sessionEstimateCache.get(cacheKey); ok {
-		return estimates, true, nil
+func (s *Server) cachedSessionEstimates(ctx context.Context, queryKey sessionQueryKey, filter model.Filter, items []store.SessionRow, snapshots ...*store.Store) ([]sessionEstimateResponseItem, bool, error) {
+	data := s.Store
+	if len(snapshots) > 0 {
+		data = snapshots[0]
 	}
 	overrides, err := s.pricingOverrides()
 	if err != nil {
 		return nil, false, err
 	}
+	encoded, err := json.Marshal(overrides)
+	if err != nil {
+		return nil, false, err
+	}
+	cacheKey := sessionEstimateCacheKey{Query: queryKey, PricingRevision: sha256.Sum256(encoded)}
+	if estimates, ok := s.sessionEstimateCache.get(cacheKey); ok {
+		return estimates, true, nil
+	}
 	builders := make(map[string]*pricing.Builder, len(items))
 	sessionIDs := make([]string, 0, len(items))
 	for _, item := range items {
-		builder, buildErr := pricing.NewBuilderForBasis(overrides, filter.CostBasis)
+		builder, buildErr := pricing.NewBuilderForBasis(overrides, filter.CostBasis, data.Location())
 		if buildErr != nil {
 			return nil, false, buildErr
 		}
 		builders[item.SessionID] = builder
 		sessionIDs = append(sessionIDs, item.SessionID)
 	}
-	if err := s.Store.WalkSessionPricingAggregates(ctx, filter, sessionIDs, func(event model.UsageEvent) error {
+	if err := data.WalkSessionPricingAggregates(ctx, filter, sessionIDs, func(event model.UsageEvent) error {
 		builder := builders[event.SessionID]
 		if builder == nil {
 			return nil
@@ -143,77 +165,67 @@ func timingMetric(name string, elapsed time.Duration, hit bool) string {
 	return fmt.Sprintf(`%s;dur=%.2f;desc="%s"`, name, float64(elapsed.Microseconds())/1000, state)
 }
 
-func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		methodNotAllowed(w, http.MethodGet)
-		return
-	}
-	filter, limit, offset, compact, err := sessionRequestParameters(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	rowsStarted := time.Now()
-	queryKey, items, rowsHit, err := s.cachedSessionRows(r.Context(), filter, limit, offset, compact)
-	rowsElapsed := time.Since(rowsStarted)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	if !includeSessionEstimates(r) {
-		w.Header().Set("Server-Timing", timingMetric("sessions", rowsElapsed, rowsHit))
-		writeJSON(w, http.StatusOK, map[string]any{"items": items})
-		return
-	}
-	estimateStarted := time.Now()
-	estimates, estimateHit, err := s.cachedSessionEstimates(r.Context(), queryKey, filter, items)
-	estimateElapsed := time.Since(estimateStarted)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	bySession := make(map[string]pricing.Estimate, len(estimates))
-	for _, item := range estimates {
-		bySession[item.SessionID] = item.Estimate
-	}
-	responseItems := make([]sessionResponseItem, 0, len(items))
-	for _, item := range items {
-		responseItems = append(responseItems, sessionResponseItem{SessionRow: item, Estimate: bySession[item.SessionID]})
-	}
-	w.Header().Set("Server-Timing", strings.Join([]string{
-		timingMetric("sessions", rowsElapsed, rowsHit),
-		timingMetric("pricing", estimateElapsed, estimateHit),
-	}, ", "))
-	writeJSON(w, http.StatusOK, map[string]any{"items": responseItems})
+// Both endpoints return the snapshot revision so clients can reject a delayed
+// estimate response from a different ledger than the visible rows.
+func (s *Server) sessionPage(ctx context.Context, filter model.Filter, limit, offset int, compact, estimates bool) (sessionQueryKey, []store.SessionRow, []sessionEstimateResponseItem, string, error) {
+	var key sessionQueryKey
+	var items []store.SessionRow
+	var costs []sessionEstimateResponseItem
+	var timings []string
+	err := s.Store.ReadSnapshot(ctx, func(data *store.Store) error {
+		started := time.Now()
+		var hit bool
+		var err error
+		key, items, hit, err = s.cachedSessionRows(ctx, filter, limit, offset, compact, data)
+		if err != nil {
+			return err
+		}
+		timings = append(timings, timingMetric("sessions", time.Since(started), hit))
+		if estimates {
+			started = time.Now()
+			costs, hit, err = s.cachedSessionEstimates(ctx, key, filter, items, data)
+			timings = append(timings, timingMetric("pricing", time.Since(started), hit))
+		}
+		return err
+	})
+	return key, items, costs, strings.Join(timings, ", "), err
 }
 
+func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
+	s.handleSessionPage(w, r, false)
+}
 func (s *Server) handleSessionEstimates(w http.ResponseWriter, r *http.Request) {
+	s.handleSessionPage(w, r, true)
+}
+func (s *Server) handleSessionPage(w http.ResponseWriter, r *http.Request, onlyEstimates bool) {
 	if r.Method != http.MethodGet {
 		methodNotAllowed(w, http.MethodGet)
 		return
 	}
-	filter, limit, offset, compact, err := sessionRequestParameters(r)
+	filter, limit, offset, compact, err := sessionRequestParameters(r, s.Store.Location())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	rowsStarted := time.Now()
-	queryKey, items, rowsHit, err := s.cachedSessionRows(r.Context(), filter, limit, offset, compact)
-	rowsElapsed := time.Since(rowsStarted)
+	key, items, estimates, timing, err := s.sessionPage(r.Context(), filter, limit, offset, compact, onlyEstimates || includeSessionEstimates(r))
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	estimateStarted := time.Now()
-	estimates, estimateHit, err := s.cachedSessionEstimates(r.Context(), queryKey, filter, items)
-	estimateElapsed := time.Since(estimateStarted)
-	if err != nil {
-		writeError(w, err)
-		return
+	w.Header().Set("Server-Timing", timing)
+	var response any = items
+	if onlyEstimates {
+		response = estimates
+	} else if includeSessionEstimates(r) {
+		bySession := make(map[string]pricing.Estimate, len(estimates))
+		for _, item := range estimates {
+			bySession[item.SessionID] = item.Estimate
+		}
+		merged := make([]sessionResponseItem, 0, len(items))
+		for _, item := range items {
+			merged = append(merged, sessionResponseItem{SessionRow: item, Estimate: bySession[item.SessionID]})
+		}
+		response = merged
 	}
-	w.Header().Set("Server-Timing", strings.Join([]string{
-		timingMetric("sessions", rowsElapsed, rowsHit),
-		timingMetric("pricing", estimateElapsed, estimateHit),
-	}, ", "))
-	writeJSON(w, http.StatusOK, map[string]any{"items": estimates})
+	writeJSON(w, http.StatusOK, map[string]any{"items": response, "data_revision": key.Revision})
 }

@@ -702,3 +702,17 @@ select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px col
 
 .mode-token-breakdown { margin: 10px 0 6px; color: var(--text-soft); font-size: .8rem; line-height: 1.7; font-variant-numeric: tabular-nums; }
 .mode-token-breakdown b, .mode-detail b { font-weight: inherit; }
+
+/* Task hierarchy uses the existing ledger typography and surfaces. */
+.session-view-switch {display:flex;gap:4px;border:1px solid var(--line);border-radius:8px;padding:3px;}
+.session-view-switch button,.tree-pagination button {border:0;border-radius:5px;background:transparent;color:var(--text-soft);padding:7px 10px;font:inherit;cursor:pointer;white-space:nowrap;}
+.session-view-switch .selected {background:var(--teal-soft);color:var(--text);}
+.tree-pagination {display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 0;font-size:.8rem;color:var(--text-soft);}
+.tree-pagination[hidden] {display:none;}
+.tree-pagination button:disabled {opacity:.4;cursor:default;}
+.task-tree-row .task-name {position:relative;padding-left:calc(28px + var(--task-depth)*14px);border-left:1px solid var(--line);}
+.tree-toggle {position:absolute;left:calc(var(--task-depth)*14px);top:0;width:25px;height:30px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--text);cursor:pointer;}
+.tree-note,.tree-subtotal {color:var(--text-soft);font-size:.72rem;white-space:normal!important;}
+.session-view-switch button:focus-visible,.tree-toggle:focus-visible,.tree-pagination button:focus-visible {outline:2px solid var(--teal);outline-offset:2px;}
+.footer-updates {flex-wrap:wrap;}
+@media(max-width:700px) {.sessions-toolbar{flex-wrap:wrap}.session-search{flex-basis:100%}.task-tree-row .task-name{padding-left:calc(28px + min(var(--task-depth),3)*12px)}.tree-toggle{left:calc(min(var(--task-depth),3)*12px)}}

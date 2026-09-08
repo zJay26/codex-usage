@@ -12,7 +12,7 @@
 
 下载期间旧服务继续工作。下载校验完成后复制当前程序作为独立 helper，传入状态目录下的任务文件。helper 再次验证摘要和目标程序版本，停止旧进程并等待退出，随后备份旧程序、配置、SQLite 主文件及其 WAL / SHM。目标程序启动后必须在 45 秒内通过匹配版本的健康检查；失败则停止新进程、恢复备份并重启旧版本。
 
-Windows helper 使用隐藏独立进程，按完整安装路径停止目标程序。Linux systemd 服务中的 helper 由 `systemd-run --user` 独立 transient unit 启动，避免停止原 service 的 cgroup 时杀死 helper；普通后台进程使用 detached helper。更新保留原有登录启动配置。安装器记录真实目标路径，避免登录启动设置 CODEX_USAGE_HOME 后改变安装目录的解析。
+Windows helper 使用隐藏独立进程，按完整安装路径停止目标程序。Linux systemd 服务中的 helper 由 `systemd-run --user` 独立 transient unit 启动，避免停止原 service 的 cgroup 时杀死 helper。macOS LaunchAgent 的 helper 使用单独的 launchd job，在主服务 bootout 后继续执行，并在更新或恢复后重新 bootstrap 主服务；helper 不设置 KeepAlive。普通后台进程使用 detached helper。更新保留原有登录启动配置。安装器记录真实目标路径，避免登录启动设置 CODEX_USAGE_HOME 后改变安装目录的解析。
 
 更新结果保存执行进程 PID；服务重启后仍能区分执行中、成功、失败及已恢复。执行进程消失时将中断任务显示为失败，不按耗时猜测正在运行的 helper 已结束。备份不自动清理，断电或无法恢复时可据此手动修复。该功能不承诺对操作系统故障或磁盘损坏自动恢复。
 
@@ -21,3 +21,5 @@ Windows helper 使用隐藏独立进程，按完整安装路径停止目标程�
 Go 测试覆盖不下载检查、版本选择、重复安装、校验失败、偏好持久化、任务中断、URL 和校验清单验证、同源及明确确认要求、更新事务的数据恢复。真实进程测试在隔离目录中构建两个版本并替换、重启，移除原始 JSONL 后核对已有统计仍保留；不注册或修改真实登录自启项。Playwright 覆盖“稍后”、关闭检查、主动安装、恢复提示、中英文和窄屏。
 
 Linux systemd 管理分支还依赖宿主机正常的 user bus；启动 helper 失败会在替换旧程序前结束。备份事务测试覆盖新版本修改数据库后的恢复；真实进程测试验证成功路径。
+
+macOS 自动安装依赖图形登录会话的 `gui/<uid>` launchd domain；无法 bootstrap 时会明确报错。原生 CI 覆盖两个架构上的安装、健康检查、卸载保留数据库和重新安装，以及 plist 校验和进程身份检查。相关路径和分发限制见 [macOS 安装说明](macos.md)。
