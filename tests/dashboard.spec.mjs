@@ -314,7 +314,7 @@ test("hourly usage inspects the selected point and navigates across local days",
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   }));
   await expect(page.locator("#currentHourDay")).toBeDisabled();
-  expect(hourlyRequests.some((url) => Date.parse(url.searchParams.get("until")) - Date.parse(url.searchParams.get("since")) === 24 * 60 * 60 * 1000)).toBeTruthy();
+  expect(hourlyRequests.some((url) => url.searchParams.get("date") === arbitraryDate && url.searchParams.get("complete_hours") === "1")).toBeTruthy();
   expect(hourlyCostRequests.length).toBeGreaterThan(0);
 });
 
@@ -776,4 +776,21 @@ test("Fast tokens, mode filters, weighted costs and responsive presentation agre
   await expect(page.locator("#overviewTokenModes")).toHaveText(/100.*Fast 0/);
   expect((await (await page.request.get(`${baseURL}/api/v1/export?mode=fast`)).json()).every(row=>row.service_mode==="fast"&&!row.mode_assumed)).toBeTruthy();
   expect(errors).toEqual([]);
+});
+
+
+test("remote browser uses the ledger timezone and keeps hourly usage", async ({ browser }) => {
+  const context = await browser.newContext({ timezoneId: "Pacific/Honolulu" });
+  const page = await context.newPage();
+  try {
+    await page.goto(dashboardURL, {waitUntil:"networkidle"});
+    await page.locator("#usageTrendPanel").getByRole("tab",{name:"每小时"}).click();
+    await expect(page.locator("#hourlyTotal")).toHaveText("60");
+    const status = await (await page.request.get(`${baseURL}/api/v1/status`)).json();
+    await expect(page.locator("#measurementTimezone")).toContainText(status.status.accounting_timezone);
+    const series = await (await page.request.get(`${baseURL}/api/v1/timeseries?date=${await page.locator("#hourlyDatePicker").inputValue()}&bucket=hour&complete_hours=1`)).json();
+    expect(series.points.reduce((sum,p)=>sum+p.usage.total,0)).toBe(60);
+    await expect(page.locator("#hourlyPoints .hour-point")).toHaveCount(series.window.complete_hours);
+    expect(new Set(series.points.map(p=>p.time)).size).toBe(series.points.length);
+  } finally { await context.close(); }
 });

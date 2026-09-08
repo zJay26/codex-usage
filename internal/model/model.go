@@ -113,20 +113,22 @@ type UsageEvent struct {
 }
 
 type SessionInfo struct {
-	SessionID    string    `json:"session_id"`
-	RolloutPath  string    `json:"rollout_path,omitempty"`
-	CodexHome    string    `json:"codex_home,omitempty"`
-	Title        string    `json:"title,omitempty"`
-	ProjectPath  string    `json:"project_path,omitempty"`
-	Model        string    `json:"model,omitempty"`
-	Source       string    `json:"source,omitempty"`
-	ThreadSource string    `json:"thread_source,omitempty"`
-	AgentType    string    `json:"agent_type,omitempty"`
-	CLIValue     string    `json:"cli_version,omitempty"`
-	TokensUsed   int64     `json:"tokens_used,omitempty"`
-	CreatedAt    time.Time `json:"created_at,omitempty"`
-	UpdatedAt    time.Time `json:"updated_at,omitempty"`
-	Archived     bool      `json:"archived"`
+	ParentSessionID string    `json:"parent_session_id,omitempty"`
+	ForkedFromID    string    `json:"forked_from_id,omitempty"`
+	SessionID       string    `json:"session_id"`
+	RolloutPath     string    `json:"rollout_path,omitempty"`
+	CodexHome       string    `json:"codex_home,omitempty"`
+	Title           string    `json:"title,omitempty"`
+	ProjectPath     string    `json:"project_path,omitempty"`
+	Model           string    `json:"model,omitempty"`
+	Source          string    `json:"source,omitempty"`
+	ThreadSource    string    `json:"thread_source,omitempty"`
+	AgentType       string    `json:"agent_type,omitempty"`
+	CLIValue        string    `json:"cli_version,omitempty"`
+	TokensUsed      int64     `json:"tokens_used,omitempty"`
+	CreatedAt       time.Time `json:"created_at,omitempty"`
+	UpdatedAt       time.Time `json:"updated_at,omitempty"`
+	Archived        bool      `json:"archived"`
 }
 
 type Machine struct {

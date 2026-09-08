@@ -261,6 +261,7 @@
       <section class="surface sessions-panel" id="sessionsPanel" aria-labelledby="sessionsTitle">
         <div class="section-head sessions-toolbar">
           <h2 id="sessionsTitle" data-i18n="details.sessionsTitle">Session 明细</h2>
+          <div class="session-view-switch" role="group" aria-label="Session view"><button type="button" class="pressable selected" data-session-view="list" aria-pressed="true" data-i18n="tree.list">列表</button><button type="button" class="pressable" data-session-view="tree" aria-pressed="false" data-i18n="tree.view">任务树</button></div>
           <div class="session-search" role="search">
             <svg aria-hidden="true" viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5.5"></circle><path d="m12.5 12.5 4 4"></path></svg>
             <input id="sessionSearch" type="search" autocomplete="off" aria-label="搜索 Session" placeholder="搜索 Thread、Session ID、项目或模型" data-i18n-aria-label="details.searchAria" data-i18n-placeholder="details.searchPlaceholder">
@@ -268,11 +269,13 @@
           </div>
         </div>
         <div class="session-head" aria-hidden="true"><span>Thread</span><span data-i18n="details.headerProject">项目</span><span data-i18n="details.headerModelSource">模型 / 来源</span><span>Agent</span><span data-i18n="mode.totalTokens">总 Token</span><span data-i18n="details.headerCost">等价 API 价格</span><span data-i18n="details.headerLastActive">最后活动</span><span></span></div>
+        <div class="tree-pagination" id="treePagination" hidden><button type="button" class="pressable" id="treePrevious" data-i18n="tree.previous">上一页</button><span id="treeCount"></span><button type="button" class="pressable" id="treeNext" data-i18n="tree.next">下一页</button><small data-i18n="tree.scope">合计包含当前筛选范围内的子任务</small></div>
         <div class="session-list" id="sessionRows"><div class="empty-state" data-i18n="details.sessionsLoading">正在加载本机 Session…</div></div>
       </section>
     </section>
 
-    <footer><span data-i18n="footer.summary">本机 Session JSONL · API 等价成本并非账单 · 仅监听 127.0.0.1</span><div class="footer-updates"><span id="versionLabel"></span><button class="text-button pressable" id="updateButton" type="button" aria-haspopup="dialog" aria-controls="updateDialog" data-i18n="update.title">软件更新</button></div></footer>
+    <footer><span data-i18n="footer.summary">本机 Session JSONL · API 等价成本并非账单 · 仅监听 127.0.0.1</span><div class="footer-updates"><span id="measurementTimezone"></span>
+        <span id="versionLabel"></span><button class="text-button pressable" id="updateButton" type="button" aria-haspopup="dialog" aria-controls="updateDialog" data-i18n="update.title">软件更新</button></div></footer>
   </main>
 
   <dialog class="modal-dialog update-dialog" id="updateDialog" aria-labelledby="updateTitle">

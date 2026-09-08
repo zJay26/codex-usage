@@ -44,6 +44,16 @@ chmod +x codex-usage
 ./codex-usage --lang en install
 ```
 
+macOS (Apple Silicon; use `amd64` on Intel):
+
+```bash
+curl -fL https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-arm64 -o codex-usage
+chmod +x codex-usage
+./codex-usage install
+```
+
+Installs a per-user login LaunchAgent without `sudo`. See [macOS installation](docs/macos.md) for checksums, locations and opening the unnotarized binary.
+
 Need arm64? Download `windows-arm64.exe` or `linux-arm64` from the [latest Release](https://github.com/zJay26/codex-usage/releases/latest). Verify the file against `SHA256SUMS` on the same page.
 
 The installer finds existing Codex usage on this computer and keeps the Dashboard updated in the background. Run `codex-usage` to open it.
@@ -58,7 +68,7 @@ On a headless Linux server, Codex Usage prints an SSH tunnel command. Run it fro
 
 | Question | What codex-usage shows |
 |---|---|
-| Which machine used the tokens? | Separate statistics for each Windows, WSL, or Linux host, without mixing in other computers on the account |
+| Which machine used the tokens? | Separate statistics for each Windows, WSL, Linux, or macOS host, without mixing in other computers on the account |
 | Which models and token categories drove usage? | Model plus Input, Cached, Cache Write, Output, and Reasoning composition |
 | Which work drove it? | Project, Thread, Session, and main task, Subagent, Guardian, or Memory attribution |
 | When did it happen? | Today, 7 days, 30 days, all time, and single-day details |
@@ -73,12 +83,13 @@ On a headless Linux server, Codex Usage prints an SSH tunnel command. Run it fro
 | History and incremental scans | Find existing records after installation and add new local usage automatically |
 | Optional software updates | Check and notify automatically; download and install only when chosen, with an opt-out for automatic checks |
 | Total and Fast | Keep total tokens prominent, show regular / Fast beneath the overview, and show total plus Fast in trends, models, and sessions |
+| Main tasks and subtasks | Collapse explicit parent/child links; compare own and subtree usage while costs remain own-only |
 | Session search and filters | Search by Thread, Session ID, project, model, or source; click an active quick filter again to clear it |
 | Daily drill-down | Explore trends, calendar days, zero-usage days, and any day's model mix |
 | Multi-dimensional details | Understand usage by model, token category, source, project, Thread, Session, and Agent |
 | Equivalent cost | See API-equivalent cost overall and per Session; unpriced usage is clearly marked instead of looking free |
 | Local and private | Keep data on the current computer, with no conversation uploads or central server |
-| Lightweight install | One file for Windows / Linux and amd64 / arm64, with no separate database to install |
+| Lightweight install | One file for Windows / Linux / macOS and amd64 / arm64, with no separate database to install |
 | Bilingual | Switch the Dashboard and CLI between English and Simplified Chinese |
 
 ## Scope and boundaries
@@ -122,7 +133,7 @@ flowchart LR
 
 The tool reads the current machine's `CODEX_HOME`. It first discovers canonical session metadata from the Codex state database, then streams JSONL files under `sessions/` and `archived_sessions/`.
 
-Codex session usage is cumulative. At **each** `token_count` record, the scanner subtracts the previous cumulative vector and assigns that delta to the record timestamp's local calendar day. It never moves an entire multi-day session to the session's latest update date. Stable event IDs and cursors keep repeated scans idempotent. Large prompt, response, reasoning, and tool-output records are skipped without loading the entire line into memory or writing content to the database.
+Token records can be cumulative per session or per turn. Persisted scope and the last token turn distinguish them: total equal to last at a new turn establishes turn scope even when it equals or exceeds the preceding total. Legacy session counters retain their cross-turn baseline. At **each** `token_count` record, the scanner subtracts the previous cumulative vector and assigns that delta to the record timestamp's local calendar day. It never moves an entire multi-day session to the session's latest update date. Stable event IDs and cursors keep repeated scans idempotent. Large prompt, response, reasoning, and tool-output records are skipped without loading the entire line into memory or writing content to the database.
 
 The Codex state database is used only to discover rollout paths and enrich titles, projects, and other metadata. Its `tokens_used` value never changes token totals. OpenAI's [`account/usage/read`](https://learn.chatgpt.com/docs/app-server#7-token-usage-chatgpt) is service-backed account activity; this tool counts only current-machine local JSONL, so the scopes differ.
 
@@ -130,14 +141,18 @@ The Codex state database is used only to discover rollout paths and enrich title
 
 - The first `session_meta` fixes the owner session of a physical JSONL file; a copied parent `session_meta` cannot overwrite it.
 - In a `forked_from_id` rollout, the “child metadata → copied parent snapshots → parent metadata” prefix establishes a cumulative baseline but is not counted as new child usage.
-- A resumed session uses a session-wide cumulative high-water mark, so repeated cumulative snapshots do not create new events.
+- Session counters use a high-water mark; turn counters deduplicate stable session/turn snapshot identities. A pre-upgrade session in a newly restored physical file requests a rebuild when old identities cannot safely prove the replay boundary.
 - If a same-total snapshot corrects Cached Input, Cache Write, Reasoning, or another category, the original event is corrected instead of treating the snapshot as a duplicate.
 
 ### File and calendar stability
 
 Every scan unions paths from the state database with `sessions/` and `archived_sessions/`, so a missing state row cannot hide a JSONL file. Ordinary Windows paths and `\\?\` extended paths normalize to one file. Truncation, a rewrite inside the scanned range, a newly completed fork-replay boundary, or a parser upgrade preserves the current statistics and requests a rebuild. Derived indexes are cleared only after confirmation in the Dashboard or an explicit `codex-usage scan --rebuild`, then rebuilt from the JSONL files that still exist. Data from deleted JSONL files may no longer be recoverable at that point.
 
-Each event stores its local date and hour at ingestion, so changing the system timezone later does not move existing history at query time. Newer Codex writers restart cumulative values at the beginning of a new turn; when that value exactly matches `last_token_usage`, the scanner treats it as an exact increment instead of a data-quality warning. Cumulative boundaries that cannot be fully verified, malformed records, invalid timestamps, and pending rebuilds remain visible. Stale file-rewrite or truncation warnings are removed after a later scan proves that the path has recovered.
+An IANA accounting time zone is persisted in the database and shown in the footer. All processes and remote browsers use it. Events keep calendar dates and actual UTC hour identities, including repeated DST hours. Set `CODEX_USAGE_TIMEZONE` before creating a new database to choose its zone; subsequent environment changes do not change the saved zone. Newer Codex writers restart cumulative values at the beginning of a new turn; when that value exactly matches `last_token_usage`, the scanner treats it as an exact increment instead of a data-quality warning. Cumulative boundaries that cannot be fully verified, malformed records, invalid timestamps, and pending rebuilds remain visible. Stale file-rewrite or truncation warnings are removed after a later scan proves that the path has recovered.
+
+Events, modes, counter progress and file offsets commit atomically per file. Database failures roll back and retry; incomplete JSONL tails, including prefixes before the type field, remain unconsumed.
+
+**v2.6.0 preserves pre-upgrade history and applies fixes to new records.** Recalculate earlier undercounts only after checking source coverage and backing up the state. See [the v2.6 accounting contract](docs/accounting-v2.6.md) for snapshots, search scope, task trees and measured query latency.
 
 ### Local service
 
@@ -206,12 +221,12 @@ The Dashboard supports `?lang=en|zh-CN` and its header language button. The URL 
 
 ## Local data paths
 
-| Data | Windows | Linux |
-|---|---|---|
-| Codex Home | `%USERPROFILE%\.codex` | `~/.codex` |
-| codex-usage state | `%LOCALAPPDATA%\codex-usage` | `${XDG_DATA_HOME:-~/.local/share}/codex-usage` |
-| Installed binary | `%LOCALAPPDATA%\Programs\codex-usage\codex-usage.exe` | `~/.local/bin/codex-usage` |
-| SQLite | `...\codex-usage\usage.sqlite` | `.../codex-usage/usage.sqlite` |
+| Data | Windows | Linux | macOS |
+|---|---|---| --- |
+| Codex Home | `%USERPROFILE%\.codex` | `~/.codex` | `~/.codex` |
+| codex-usage state | `%LOCALAPPDATA%\codex-usage` | `${XDG_DATA_HOME:-~/.local/share}/codex-usage` | `~/Library/Application Support/codex-usage` |
+| Installed binary | `%LOCALAPPDATA%\Programs\codex-usage\codex-usage.exe` | `~/.local/bin/codex-usage` | `.../codex-usage/bin/codex-usage` |
+| SQLite | `...\codex-usage\usage.sqlite` | `.../codex-usage/usage.sqlite` | `.../codex-usage/usage.sqlite` |
 
 `CODEX_USAGE_HOME` overrides the app state directory. Do not synchronize this directory between machines, or the per-machine boundary becomes unreliable.
 
@@ -238,7 +253,7 @@ go test ./...
 CGO_ENABLED=0 go build -trimpath -o codex-usage ./cmd/codex-usage
 ```
 
-Build all four targets with `scripts/build.ps1` on Windows or `scripts/build.sh` on Linux.
+Build all six targets with `scripts/build.ps1` on Windows or `scripts/build.sh` on Linux.
 
 Dashboard tests:
 

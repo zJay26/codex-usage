@@ -160,3 +160,27 @@ test("saved and browser locales follow the documented fallback order", async ({ 
   await expect(fallbackPage.locator("html")).toHaveAttribute("lang", "zh-CN");
   await fallbackContext.close();
 });
+
+
+test("task tree collapses subtask rows and stays usable on narrow screens", async ({ page }, testInfo) => {
+  const errors=[];page.on("pageerror",error=>errors.push(error.message));
+  await page.goto(`${baseURL}?lang=zh-CN#details`,{waitUntil:"networkidle"});
+  await page.getByRole("button",{name:"任务树",exact:true}).click();
+  const rows=page.locator(".task-tree-row");
+  await expect(rows.first()).toBeVisible();
+  const initial=await rows.count();
+  const toggle=page.locator("[data-tree-toggle]").first();
+  await expect(toggle).toHaveAttribute("aria-expanded","true");
+  await toggle.press("Enter");
+  await expect(toggle).toHaveAttribute("aria-expanded","false");
+  expect(await rows.count()).toBeLessThan(initial);
+  await toggle.press("Enter");
+  await expect(rows).toHaveCount(initial);
+  await expect(page.locator(".tree-subtotal").first()).toContainText("含子任务");
+  await page.screenshot({path:testInfo.outputPath("task-tree-desktop.png"),fullPage:true});
+  await page.locator("#themeButton").click();
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.screenshot({path:testInfo.outputPath("task-tree-mobile-dark.png"),fullPage:true});
+  expect(errors).toEqual([]);
+});

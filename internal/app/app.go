@@ -31,7 +31,7 @@ import (
 )
 
 var (
-	Version   = "2.5.0"
+	Version   = "2.6.0"
 	Commit    = "dev"
 	BuildDate = "unknown"
 )
@@ -463,7 +463,7 @@ func (c CLI) summary(args []string) error {
 	defer state.store.Close()
 	filter := model.Filter{}
 	if *since != "all" {
-		filter.Since, err = usageServer.ParseSince(*since)
+		filter.Since, err = usageServer.ParseSinceInLocation(*since, state.store.Location())
 		if err != nil {
 			return err
 		}

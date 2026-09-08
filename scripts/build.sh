@@ -3,7 +3,7 @@ set -euo pipefail
 
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 dist="$project_root/dist"
-version="${VERSION:-2.5.0}"
+version="${VERSION:-2.6.0}"
 build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 commit="$(git -C "$project_root" rev-parse --short HEAD 2>/dev/null || printf source)"
 if git -C "$project_root" rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
@@ -16,7 +16,7 @@ mkdir -p "$dist"
 cd "$project_root"
 "$go_bin" test ./...
 
-for target in windows/amd64 windows/arm64 linux/amd64 linux/arm64; do
+for target in windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
   os="${target%/*}"
   arch="${target#*/}"
   suffix=""
@@ -31,6 +31,8 @@ done
 (
   cd "$dist"
   sha256sum \
+    codex-usage-darwin-amd64 \
+    codex-usage-darwin-arm64 \
     codex-usage-linux-amd64 \
     codex-usage-linux-arm64 \
     codex-usage-windows-amd64.exe \

@@ -37,6 +37,7 @@ type Scanner struct {
 	Now               func() time.Time
 	mu                sync.Mutex
 	busy              atomic.Bool
+	turnBaselines     map[string]bool // private to one file transaction
 }
 
 type ScanResult struct {
@@ -175,11 +176,13 @@ func (s *Scanner) scanPass(ctx context.Context, homes []string) (ScanResult, err
 				}
 				result.Warnings++
 				_ = s.Store.AddWarning(ctx, "rollout_scan", path, err.Error())
-				continue
+				return result, err
 			}
 		}
 
-		_ = s.Store.UpdateScanState(ctx, home, discovery.StateDB, files, discovery.Warning)
+		if err := s.Store.UpdateScanState(ctx, home, discovery.StateDB, files, discovery.Warning); err != nil {
+			return result, err
+		}
 	}
 	return result, nil
 }
@@ -206,18 +209,23 @@ func (e *RebuildRequiredError) Error() string {
 	return e.Detail + "；现有统计已保留，需要用户确认后才能重建"
 }
 
-func (s *Scanner) scanFile(ctx context.Context, home, path string, meta model.SessionInfo, info os.FileInfo) (fileScanResult, error) {
+func (s *Scanner) scanFileTransaction(ctx context.Context, home, path string, meta model.SessionInfo, info os.FileInfo) (fileScanResult, error) {
 	var result fileScanResult
 	cursor, exists, err := s.Store.GetCursor(ctx, path)
 	if err != nil {
 		return result, err
 	}
 	if exists {
+		if err := s.backfillRelationship(ctx, path, cursor); err != nil {
+			return result, err
+		}
 		pendingForkReplay := cursor.ForkedFromID != "" && cursor.ReplayOffset == 0 && cursor.Offset == 0
 		if cursor.Offset >= info.Size() && cursor.Size == info.Size() &&
 			!pendingForkReplay &&
 			cursor.ModifiedNanos == info.ModTime().UnixNano() {
-			_ = s.backfillJSONLModes(ctx, home, path, cursor)
+			if err := s.backfillJSONLModes(ctx, home, path, cursor); err != nil {
+				return result, err
+			}
 			if err := s.Store.ClearResolvedFileWarnings(ctx, path); err != nil {
 				return result, err
 			}
@@ -309,7 +317,9 @@ func (s *Scanner) scanFile(ctx context.Context, home, path string, meta model.Se
 		}
 	}
 	if exists {
-		_ = s.backfillJSONLModes(ctx, home, path, cursor)
+		if err := s.backfillJSONLModes(ctx, home, path, cursor); err != nil {
+			return result, err
+		}
 	}
 	if cursor.SessionID != "" {
 		if err := s.inheritSessionProgress(ctx, &cursor); err != nil {
@@ -347,8 +357,10 @@ func (s *Scanner) scanFile(ctx context.Context, home, path string, meta model.Se
 		result.Records++
 		if tooLarge {
 			result.Warnings++
-			_ = s.Store.AddWarning(ctx, "record_too_large", path,
-				fmt.Sprintf("相关 JSONL 记录超过 %d 字节，已跳过且未载入完整内容（offset=%d）", s.MaxRelevantRecord, recordStart))
+			if err := s.Store.AddWarning(ctx, "record_too_large", path,
+				fmt.Sprintf("相关 JSONL 记录超过 %d 字节，已跳过且未载入完整内容（offset=%d）", s.MaxRelevantRecord, recordStart)); err != nil {
+				return result, err
+			}
 			continue
 		}
 		if len(record) == 0 {
@@ -357,14 +369,18 @@ func (s *Scanner) scanFile(ctx context.Context, home, path string, meta model.Se
 			}
 			continue
 		}
+		beforeRecord := cursor
 		if parseErr := s.processRecord(ctx, record, recordStart, path, home, meta, &cursor, &result); parseErr != nil {
-			var changed *RebuildRequiredError
-			if errors.As(parseErr, &changed) {
+			if !isRecordError(parseErr) {
 				return result, parseErr
 			}
+			delete(s.turnBaselines, cursor.TurnID)
+			cursor = beforeRecord
 			result.Warnings++
-			_ = s.Store.AddWarning(ctx, "jsonl_record", path,
-				fmt.Sprintf("offset=%d: %v", recordStart, parseErr))
+			if err := s.Store.AddWarning(ctx, "jsonl_record", path,
+				fmt.Sprintf("offset=%d: %v", recordStart, parseErr)); err != nil {
+				return result, err
+			}
 		}
 		if errors.Is(err, io.EOF) {
 			break
@@ -384,7 +400,9 @@ func (s *Scanner) scanFile(ctx context.Context, home, path string, meta model.Se
 		return result, err
 	}
 	if !exists {
-		_ = s.Store.MarkModeFileChecked(ctx, path)
+		if err := s.Store.MarkModeFileChecked(ctx, path); err != nil {
+			return result, err
+		}
 	}
 	if cursor.SessionID != "" {
 		session := meta
@@ -493,13 +511,13 @@ func (s *Scanner) processRecord(
 ) error {
 	var env envelope
 	if err := json.Unmarshal(record, &env); err != nil {
-		return fmt.Errorf("损坏 JSON: %w", err)
+		return &recordError{fmt.Errorf("损坏 JSON: %w", err)}
 	}
 	switch env.Type {
 	case "session_meta":
 		var payload sessionMetaPayload
 		if err := json.Unmarshal(env.Payload, &payload); err != nil {
-			return err
+			return &recordError{err}
 		}
 		candidateID := firstNonEmpty(payload.ID, payload.SessionID)
 		if cursor.SessionID == "" {
@@ -528,11 +546,14 @@ func (s *Scanner) processRecord(
 			payload.ThreadSource, meta.ThreadSource)
 		if existing, err := s.Store.Session(ctx, cursor.SessionID); err == nil &&
 			existing.CodexHome != "" && !samePath(existing.CodexHome, home) {
-			_ = s.Store.AddWarning(ctx, "shared_codex_home_history", cursor.SessionID,
-				fmt.Sprintf("同一 session 同时出现在 %s 和 %s；安装前历史无法可靠按电脑拆分，已按 session 去重", existing.CodexHome, home))
+			if err := s.Store.AddWarning(ctx, "shared_codex_home_history", cursor.SessionID,
+				fmt.Sprintf("同一 session 同时出现在 %s 和 %s；安装前历史无法可靠按电脑拆分，已按 session 去重", existing.CodexHome, home)); err != nil {
+				return err
+			}
 			result.Warnings++
 		}
 		return s.Store.UpsertSession(ctx, model.SessionInfo{
+			ParentSessionID: model.SpawnParent(payload.Source), ForkedFromID: payload.ForkedFromID,
 			SessionID:    cursor.SessionID,
 			RolloutPath:  path,
 			CodexHome:    home,
@@ -551,7 +572,7 @@ func (s *Scanner) processRecord(
 	case "turn_context":
 		var payload turnContextPayload
 		if err := json.Unmarshal(env.Payload, &payload); err != nil {
-			return err
+			return &recordError{err}
 		}
 		cursor.TurnID = firstNonEmpty(payload.TurnID, cursor.TurnID)
 		cursor.Model = firstNonEmpty(payload.Model, cursor.Model, meta.Model)
@@ -568,7 +589,7 @@ func (s *Scanner) processRecord(
 	case "event_msg":
 		var payload eventPayload
 		if err := json.Unmarshal(env.Payload, &payload); err != nil {
-			return err
+			return &recordError{err}
 		}
 		if payload.Type != "token_count" {
 			return nil
@@ -578,6 +599,17 @@ func (s *Scanner) processRecord(
 		}
 		var info tokenInfo
 		if err := json.Unmarshal(payload.Info, &info); err != nil {
+			return &recordError{err}
+		}
+		if info.Total.usage().IsZero() {
+			return nil
+		}
+		if !info.Total.usage().NonNegative() {
+			return &recordError{fmt.Errorf("invalid token vector")}
+		}
+		cursor.TurnID = firstNonEmpty(payload.TurnID, cursor.TurnID)
+		selectCounterScope(cursor, info)
+		if err := s.inheritTurnProgress(ctx, cursor); err != nil {
 			return err
 		}
 		rawCurrent := info.Total.usage()
@@ -591,8 +623,12 @@ func (s *Scanner) processRecord(
 		}
 		if current.Total > 0 && current.Total == cursor.Cumulative.Total {
 			difference := current.Sub(cursor.Cumulative)
+			scopeTurn := ""
+			if cursor.Accounting.Scope == "turn" {
+				scopeTurn = cursor.TurnID
+			}
 			corrected, err := s.Store.CorrectEventUsage(
-				ctx, cursor.LastEventID, cursor.SessionID, cursor.Segment, difference,
+				ctx, cursor.LastEventID, cursor.SessionID, cursor.Segment, difference, scopeTurn,
 			)
 			if err != nil {
 				return err
@@ -604,7 +640,7 @@ func (s *Scanner) processRecord(
 				result.Duplicates++
 			}
 			if cursor.SessionID != "" {
-				return s.Store.PutSessionProgress(ctx, cursor.SessionID, cursor.Segment, current)
+				return s.Store.PutSessionProgress(ctx, cursor.SessionID, cursor.Segment, current, cursor.Accounting)
 			}
 			return nil
 		}
@@ -625,8 +661,8 @@ func (s *Scanner) processRecord(
 			} else {
 				last := info.Last.usage()
 				if last.IsZero() || !last.NonNegative() {
-					return fmt.Errorf("累计 Token 回退且 last_token_usage 不可用: previous=(%s), current=(%s)",
-						cursor.Cumulative, current)
+					return &recordError{fmt.Errorf("累计 Token 回退且 last_token_usage 不可用: previous=(%s), current=(%s)",
+						cursor.Cumulative, current)}
 				}
 				cursor.Segment++
 				delta = last
@@ -639,9 +675,11 @@ func (s *Scanner) processRecord(
 					cursor.InheritedBaseline = false
 				} else {
 					confidence = model.ConfidenceGapFallback
-					_ = s.Store.AddWarning(ctx, "cumulative_gap_fallback", path,
+					if err := s.Store.AddWarning(ctx, "cumulative_gap_fallback", path,
 						fmt.Sprintf("offset=%d previous=(%s) current=(%s) last=(%s)，累计边界无法完整核对，使用 last_token_usage 保守补位",
-							offset, cursor.Cumulative, current, last))
+							offset, cursor.Cumulative, current, last)); err != nil {
+						return err
+					}
 					result.Warnings++
 				}
 			}
@@ -651,18 +689,20 @@ func (s *Scanner) processRecord(
 			return nil
 		}
 		if !delta.NonNegative() {
-			return fmt.Errorf("计算出负 Token 增量: %s", delta)
+			return &recordError{fmt.Errorf("计算出负 Token 增量: %s", delta)}
 		}
 		timestamp, parseErr := parseTimestamp(env.Timestamp)
 		if parseErr != nil {
 			confidence = model.ConfidenceGapFallback
-			_ = s.Store.AddWarning(ctx, "timestamp", path,
-				fmt.Sprintf("offset=%d: %v；事件保留为未归属时间", offset, parseErr))
+			if err := s.Store.AddWarning(ctx, "timestamp", path,
+				fmt.Sprintf("offset=%d: %v；事件保留为未归属时间", offset, parseErr)); err != nil {
+				return err
+			}
 			result.Warnings++
 		}
 		sessionID := firstNonEmpty(cursor.SessionID, meta.SessionID, "unknown-"+shortHash(path))
 		event := model.UsageEvent{
-			ID:          stableJSONLEventID(sessionID, cursor.Segment, current),
+			ID:          scopedEventID(sessionID, cursor, current),
 			Timestamp:   timestamp,
 			Segment:     cursor.Segment,
 			ObservedAt:  s.Now(),
@@ -690,7 +730,7 @@ func (s *Scanner) processRecord(
 		}
 		cursor.LastEventID = event.ID
 		cursor.Cumulative = current
-		if err := s.Store.PutSessionProgress(ctx, sessionID, cursor.Segment, current); err != nil {
+		if err := s.Store.PutSessionProgress(ctx, sessionID, cursor.Segment, current, cursor.Accounting); err != nil {
 			return err
 		}
 		return nil
@@ -701,6 +741,19 @@ func (s *Scanner) processRecord(
 
 func (s *Scanner) inheritSessionProgress(ctx context.Context, cursor *store.FileCursor) error {
 	if cursor.SessionID == "" {
+		return nil
+	}
+	accounting, err := s.Store.SessionAccounting(ctx, cursor.SessionID)
+	if err != nil {
+		return err
+	}
+	if accounting.LegacyHistory && !cursor.Accounting.LegacyHistory {
+		return &RebuildRequiredError{Kind: "counter_scope_replay", Path: cursor.Path, Detail: "升级前的 Session 出现在新的物理文件中，旧计量标识不能安全验证重放边界"}
+	}
+	if cursor.Accounting.Scope == "turn" || accounting.Scope == "turn" {
+		// Turn counters belong to this physical replay position. Reusing the last
+		// turn's value as a session high-water mark would suppress resumed usage.
+		cursor.Accounting.Scope = "turn"
 		return nil
 	}
 	usage, segment, ok, err := s.Store.GetSessionProgress(ctx, cursor.SessionID)
@@ -1031,6 +1084,12 @@ func readSelectiveRecord(reader *bufio.Reader, maxRelevant int) (record []byte, 
 		fragment, err := reader.ReadSlice('\n')
 		consumed += int64(len(fragment))
 		if !decided {
+			if !tooLarge && len(kept)+len(fragment) <= maxRelevant {
+				kept = append(kept, fragment...)
+			} else {
+				tooLarge = true
+				kept = nil
+			}
 			remaining := recordProbeLimit - len(probe)
 			if remaining > 0 {
 				if len(fragment) < remaining {
@@ -1042,12 +1101,9 @@ func readSelectiveRecord(reader *bufio.Reader, maxRelevant int) (record []byte, 
 			relevant = interestingProbe(probe)
 			if relevant || len(probe) >= recordProbeLimit || bytes.Contains(fragment, []byte{'\n'}) || err == io.EOF {
 				decided = true
-				if relevant {
-					if len(fragment) <= maxRelevant {
-						kept = append(kept, fragment...)
-					} else {
-						tooLarge = true
-					}
+				if !relevant {
+					kept = nil
+					tooLarge = false
 				}
 			}
 		} else if relevant && !tooLarge {
@@ -1076,10 +1132,10 @@ func readSelectiveRecord(reader *bufio.Reader, maxRelevant int) (record []byte, 
 				return nil, consumed, false, tooLarge, io.EOF
 			}
 			if !relevant {
-				return nil, consumed, true, false, io.EOF
+				return nil, consumed, false, false, io.EOF
 			}
 			if tooLarge {
-				return nil, consumed, true, true, io.EOF
+				return nil, consumed, false, true, io.EOF
 			}
 			// JSONL writers can finish a valid final line without '\n'. It is
 			// complete only when the JSON itself is syntactically complete.

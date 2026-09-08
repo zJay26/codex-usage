@@ -210,7 +210,8 @@
   function hourlyPoints(url) {
     const currentHour = new Date(now);
     currentHour.setMinutes(0, 0, 0);
-    const { start, end } = requestedBounds(url, new Date(currentHour.getTime() - 24 * 60 * 60_000), currentHour);
+    let { start, end } = requestedBounds(url, new Date(currentHour.getTime() - 24 * 60 * 60_000), currentHour);
+    if(url.searchParams.get("complete_hours")==="1" && end>currentHour) end=currentHour;
     const points = [];
     let index = 0;
     for (let date = new Date(start); date < end && index < 168; date = new Date(date.getTime() + 60 * 60_000), index++) {
@@ -299,7 +300,7 @@
     };
   }
 
-  const demoUpdates = { current_version: "2.5.0-demo", latest_version: "2.5.0", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: false, can_install: false, phase: "idle" };
+  const demoUpdates = { current_version: "2.6.0-demo", latest_version: "2.6.0", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: false, can_install: false, phase: "idle" };
   async function syntheticFetch(input, init = {}) {
     const raw = typeof input === "string" ? input : input.url;
     const url = new URL(raw, root.location.href);
@@ -312,7 +313,7 @@
       return jsonResponse(demoUpdates);
     }
     if (endpoint === "/api/v1/status") return jsonResponse({
-      version: "2.5.0-demo", scanning: false,
+      version: "2.6.0-demo", scanning: false,
       status: {
         machine: { id: "synthetic-machine", label: "Synthetic Windows · demo", hostname: "synthetic-host", os: "windows", arch: "amd64" },
         last_scan: now.toISOString(), accounting_mode: "jsonl_only", otel_active: false,
@@ -325,7 +326,8 @@
     if (endpoint === "/api/v1/timeseries") {
       const bucket = url.searchParams.get("bucket") === "hour" ? "hour" : "day";
       const points = bucket === "hour" ? hourlyPoints(url) : dailyPoints(url).map((point) => ({ time: point.time, date: point.date, usage: point.usage }));
-      return jsonResponse(withModes({ bucket, points },url));
+      const window = bucket === "hour" && url.searchParams.get("date") ? (()=>{const start=rangeDate(url.searchParams.get("date"));const end=new Date(start.getTime()+points.length*3600000);return {date:dateKey(start),start:start.toISOString(),end:end.toISOString(),complete_hours:points.length};})() : null;
+      return jsonResponse(withModes({ bucket, points, window },url));
     }
     if (endpoint === "/api/v1/breakdown") return jsonResponse(withModes(breakdown(url),url));
     if (endpoint === "/api/v1/dimensions") return jsonResponse({
@@ -333,6 +335,12 @@
       sources: sources.map((item) => item.key),
       projects: projects.map((item) => item.key)
     });
+    if (endpoint === "/api/v1/session-tree") {
+      const payload=withModes(sessionPayload(url),url);
+      const items=payload.items.map((item,index)=>({...item,depth:index%3===0?0:1,children:index%3===0?Math.min(2,payload.items.length-index-1):0,parent_id:index%3===0?"":payload.items[index-index%3].session_id,subtree_usage:{...item.usage}}));
+      items.forEach((item,index)=>{if(index%3!==0){const parent=items[index-index%3];parent.subtree_usage=addUsage(parent.subtree_usage,item.usage);}});
+      return jsonResponse({items,root_count:Math.ceil(items.length/3),offset:0,limit:20});
+    }
     if (endpoint === "/api/v1/sessions") {
       const payload = withModes(sessionPayload(url),url);
       if (["0", "false"].includes((url.searchParams.get("include_estimate") || "").toLowerCase())) {

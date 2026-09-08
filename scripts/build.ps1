@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "2.5.0"
+    [string]$Version = "2.6.0"
 )
 
 $ErrorActionPreference = "Stop"
@@ -30,7 +30,9 @@ try {
         @{ OS = "windows"; Arch = "amd64"; Suffix = ".exe" },
         @{ OS = "windows"; Arch = "arm64"; Suffix = ".exe" },
         @{ OS = "linux"; Arch = "amd64"; Suffix = "" },
-        @{ OS = "linux"; Arch = "arm64"; Suffix = "" }
+        @{ OS = "linux"; Arch = "arm64"; Suffix = "" },
+        @{ OS = "darwin"; Arch = "amd64"; Suffix = "" },
+        @{ OS = "darwin"; Arch = "arm64"; Suffix = "" }
     )
     $Artifacts = @()
     foreach ($Target in $Targets) {

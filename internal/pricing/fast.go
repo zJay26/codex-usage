@@ -2,6 +2,7 @@ package pricing
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/zJay26/codex-usage/internal/model"
 )
@@ -14,13 +15,16 @@ func ValidBasis(basis string) bool {
 	return basis == "" || basis == Basis || basis == FastWeightedBasis
 }
 
-func NewBuilderForBasis(overrides map[string]Override, basis string) (*Builder, error) {
+func NewBuilderForBasis(overrides map[string]Override, basis string, locations ...*time.Location) (*Builder, error) {
 	if !ValidBasis(basis) {
 		return nil, fmt.Errorf("不支持的计价口径 %q", basis)
 	}
 	b, err := NewBuilder(overrides)
 	if err != nil {
 		return nil, err
+	}
+	if len(locations) > 0 {
+		b.location = locations[0]
 	}
 	if basis != "" {
 		b.basis = basis

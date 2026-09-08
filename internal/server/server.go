@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -66,6 +67,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/timeseries", s.handleTimeseries)
 	mux.HandleFunc("/api/v1/breakdown", s.handleBreakdown)
 	mux.HandleFunc("/api/v1/dimensions", s.handleDimensions)
+	mux.HandleFunc("/api/v1/session-tree", s.handleSessionTree)
 	mux.HandleFunc("/api/v1/sessions", s.handleSessions)
 	mux.HandleFunc("/api/v1/session-estimates", s.handleSessionEstimates)
 	mux.HandleFunc("/api/v1/warnings", s.handleWarnings)
@@ -142,9 +144,16 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	overrides, err := s.pricingOverrides()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	encoded, _ := json.Marshal(overrides)
 	homes, _ := s.Homes()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"version":          s.Version,
+		"pricing_revision": fmt.Sprintf("%x", sha256.Sum256(encoded)),
 		"url":              s.URL(),
 		"scanning":         s.scanning.Load() || s.Scanner.Busy(),
 		"status":           status,
@@ -163,7 +172,7 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, http.MethodGet)
 		return
 	}
-	filter, err := parseFilter(r.URL.Query())
+	filter, err := parseFilterIn(r.URL.Query(), s.Store.Location())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -181,7 +190,7 @@ func (s *Server) handleTimeseries(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, http.MethodGet)
 		return
 	}
-	filter, err := parseFilter(r.URL.Query())
+	filter, err := parseFilterIn(r.URL.Query(), s.Store.Location())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -194,12 +203,21 @@ func (s *Server) handleTimeseries(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bucket 只能是 day 或 hour", http.StatusBadRequest)
 		return
 	}
+	var window *hourWindow
+	if bucket == "hour" && r.URL.Query().Get("date") != "" {
+		value := makeHourWindow(r.URL.Query().Get("date"), s.Store.Location(), time.Now(), r.URL.Query().Get("complete_hours") == "1")
+		window = &value
+		filter.SinceDate, filter.UntilDate = "", ""
+		if filter.Until.After(value.End) {
+			filter.Until = value.End
+		}
+	}
 	points, err := s.Store.Timeseries(r.Context(), filter, bucket)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"bucket": bucket, "points": points})
+	writeJSON(w, http.StatusOK, map[string]any{"bucket": bucket, "points": points, "window": window, "time_zone": s.Store.Location().String()})
 }
 
 func (s *Server) handleBreakdown(w http.ResponseWriter, r *http.Request) {
@@ -207,7 +225,7 @@ func (s *Server) handleBreakdown(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, http.MethodGet)
 		return
 	}
-	filter, err := parseFilter(r.URL.Query())
+	filter, err := parseFilterIn(r.URL.Query(), s.Store.Location())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -229,7 +247,11 @@ func (s *Server) handleDimensions(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, http.MethodGet)
 		return
 	}
-	revision := s.Store.Revision()
+	revision, err := s.Store.DataRevision(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	s.dimensionMu.Lock()
 	if s.dimensionRevision != revision {
 		values, err := s.Store.Dimensions(r.Context())
@@ -264,7 +286,7 @@ func (s *Server) handleCostEstimate(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, http.MethodGet)
 		return
 	}
-	filter, err := parseFilter(r.URL.Query())
+	filter, err := parseFilterIn(r.URL.Query(), s.Store.Location())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -282,7 +304,7 @@ func (s *Server) handleCostEstimate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	builder, err := pricing.NewBuilderForBasis(overrides, filter.CostBasis)
+	builder, err := pricing.NewBuilderForBasis(overrides, filter.CostBasis, s.Store.Location())
 	if err != nil {
 		writeError(w, err)
 		return
@@ -291,7 +313,7 @@ func (s *Server) handleCostEstimate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	report, err := pricing.FillDaily(builder.Report(), filter.Since, filter.Until, time.Now())
+	report, err := pricing.FillDaily(builder.Report(), filter.Since, filter.Until, time.Now(), s.Store.Location())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -470,7 +492,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, http.MethodGet)
 		return
 	}
-	filter, err := parseFilter(r.URL.Query())
+	filter, err := parseFilterIn(r.URL.Query(), s.Store.Location())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -567,22 +589,23 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 	return nil
 }
 
-func parseFilter(query url.Values) (model.Filter, error) {
+func parseFilter(query url.Values) (model.Filter, error) { return parseFilterIn(query, time.Local) }
+func parseFilterIn(query url.Values, loc *time.Location) (model.Filter, error) {
 	var filter model.Filter
 	var err error
 	if value := query.Get("since"); value != "" && value != "all" {
-		filter.Since, err = parseSince(value)
+		filter.Since, err = parseSinceIn(value, loc)
 		if err != nil {
 			return filter, fmt.Errorf("since: %w", err)
 		}
 		if isDateOnly(value) {
 			filter.SinceDate = value
 		} else if strings.EqualFold(value, "today") {
-			filter.SinceDate = time.Now().In(time.Local).Format("2006-01-02")
+			filter.SinceDate = time.Now().In(loc).Format("2006-01-02")
 		}
 	}
 	if value := query.Get("until"); value != "" {
-		filter.Until, err = parseAbsoluteTime(value)
+		filter.Until, err = parseAbsoluteTimeIn(value, loc)
 		if err != nil {
 			return filter, fmt.Errorf("until: %w", err)
 		}
@@ -594,7 +617,7 @@ func parseFilter(query url.Values) (model.Filter, error) {
 		if !isDateOnly(value) {
 			return filter, fmt.Errorf("date: 无效日期 %q", value)
 		}
-		dayStart, _ := time.ParseInLocation("2006-01-02", value, time.Local)
+		dayStart, _ := time.ParseInLocation("2006-01-02", value, loc)
 		dayEnd := dayStart.AddDate(0, 0, 1)
 		sinceValue, untilValue := query.Get("since"), query.Get("until")
 		hasAbsoluteBounds := (sinceValue != "" && sinceValue != "all" && !isDateOnly(sinceValue)) ||
@@ -649,9 +672,13 @@ func isDateOnly(value string) bool {
 }
 
 func ParseSince(value string) (time.Time, error) { return parseSince(value) }
+func ParseSinceInLocation(value string, loc *time.Location) (time.Time, error) {
+	return parseSinceIn(value, loc)
+}
 
-func parseSince(value string) (time.Time, error) {
-	now := time.Now()
+func parseSince(value string) (time.Time, error) { return parseSinceIn(value, time.Local) }
+func parseSinceIn(value string, loc *time.Location) (time.Time, error) {
+	now := time.Now().In(loc)
 	switch strings.ToLower(value) {
 	case "today":
 		y, m, d := now.Date()
@@ -676,12 +703,15 @@ func parseSince(value string) (time.Time, error) {
 	if duration, err := time.ParseDuration(value); err == nil {
 		return now.Add(-duration), nil
 	}
-	return parseAbsoluteTime(value)
+	return parseAbsoluteTimeIn(value, loc)
 }
 
 func parseAbsoluteTime(value string) (time.Time, error) {
+	return parseAbsoluteTimeIn(value, time.Local)
+}
+func parseAbsoluteTimeIn(value string, loc *time.Location) (time.Time, error) {
 	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02"} {
-		if parsed, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+		if parsed, err := time.ParseInLocation(layout, value, loc); err == nil {
 			return parsed, nil
 		}
 	}
