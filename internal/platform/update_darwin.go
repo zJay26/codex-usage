@@ -32,6 +32,7 @@ func StopForUpdate(executable, stateDir string, managed bool) error {
 			if err := launchctl("bootout", target); err != nil {
 				return err
 			}
+			return waitDarwinProcessExit(pid, executable)
 		}
 	}
 	return stopDarwinProcess(pid, executable)

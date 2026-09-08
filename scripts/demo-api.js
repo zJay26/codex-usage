@@ -300,7 +300,7 @@
     };
   }
 
-  const demoUpdates = { current_version: "2.6.0-demo", latest_version: "2.6.0", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: false, can_install: false, phase: "idle" };
+  const demoUpdates = { current_version: "2.6.1-demo", latest_version: "2.6.1", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: false, can_install: false, phase: "idle" };
   async function syntheticFetch(input, init = {}) {
     const raw = typeof input === "string" ? input : input.url;
     const url = new URL(raw, root.location.href);
@@ -313,7 +313,7 @@
       return jsonResponse(demoUpdates);
     }
     if (endpoint === "/api/v1/status") return jsonResponse({
-      version: "2.6.0-demo", scanning: false,
+      version: "2.6.1-demo", scanning: false,
       status: {
         machine: { id: "synthetic-machine", label: "Synthetic Windows · demo", hostname: "synthetic-host", os: "windows", arch: "amd64" },
         last_scan: now.toISOString(), accounting_mode: "jsonl_only", otel_active: false,
