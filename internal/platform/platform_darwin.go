@@ -150,24 +150,52 @@ func stopDarwinProcess(pid int, executable string) error {
 	if pid <= 0 || pid == os.Getpid() {
 		return nil
 	}
-	output, err := exec.Command("/bin/ps", "-p", strconv.Itoa(pid), "-o", "comm=").Output()
-	if err != nil {
-		if syscall.Kill(pid, 0) == syscall.ESRCH {
-			return nil
-		}
+	matches, live, err := darwinProcessIdentity(pid, executable)
+	if err != nil || !live {
 		return err
 	}
-	actual := strings.TrimSpace(string(output))
-	expected, _ := filepath.EvalSymlinks(executable)
-	if actual != executable && (expected == "" || actual != expected) {
+	if !matches {
 		return fmt.Errorf("service PID does not match installed application")
 	}
 	if err = syscall.Kill(pid, syscall.SIGTERM); err != nil && err != syscall.ESRCH {
 		return err
 	}
+	return waitDarwinProcessExit(pid, executable)
+}
+
+func darwinProcessIdentity(pid int, executable string) (matches, live bool, err error) {
+	output, err := exec.Command("/bin/ps", "-p", strconv.Itoa(pid), "-o", "stat=", "-o", "comm=").Output()
+	if err != nil {
+		if syscall.Kill(pid, 0) == syscall.ESRCH {
+			return false, false, nil
+		}
+		return false, false, err
+	}
+	fields := strings.Fields(string(output))
+	if len(fields) < 2 || strings.HasPrefix(fields[0], "Z") {
+		// An exited launchd child can remain briefly as a zombie. Its command
+		// path is no longer reliable, and it must not be signalled again.
+		return false, false, nil
+	}
+	actual := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(output)), fields[0]))
+	expected, _ := filepath.EvalSymlinks(executable)
+	return actual == executable || (expected != "" && actual == expected), true, nil
+}
+
+// Call only after the matching process was signalled or its launchd job was
+// booted out. A changed identity means the original PID has been reaped/reused;
+// never send a signal to the new occupant of that PID.
+func waitDarwinProcessExit(pid int, executable string) error {
+	if pid <= 0 || pid == os.Getpid() {
+		return nil
+	}
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		if syscall.Kill(pid, 0) == syscall.ESRCH {
+		matches, live, err := darwinProcessIdentity(pid, executable)
+		if err != nil {
+			return err
+		}
+		if !live || !matches {
 			return nil
 		}
 		time.Sleep(100 * time.Millisecond)

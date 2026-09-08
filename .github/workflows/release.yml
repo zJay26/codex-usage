@@ -9,7 +9,26 @@ permissions:
   contents: write
 
 jobs:
+  macos:
+    name: release macOS (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.8"
+          cache: true
+      - run: go test ./internal/platform ./internal/app
+      - name: Repeated native service lifecycle checks
+        run: for attempt in 1 2 3; do bash scripts/test-macos.sh; done
+
   release:
+    needs: macos
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

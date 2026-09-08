@@ -33,7 +33,7 @@ jobs:
         run: go test -race ./internal/usage ./internal/store ./internal/server
       - name: Native macOS install, restart and uninstall
         if: runner.os == 'macOS'
-        run: bash scripts/test-macos.sh
+        run: for attempt in 1 2 3; do bash scripts/test-macos.sh; done
 
   cross-build:
     name: cross-build

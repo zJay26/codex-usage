@@ -32,6 +32,8 @@ Default locations:
 
 Uninstall unloads the agent and removes the installed executable, retaining the database. `uninstall --purge` additionally deletes only a validated, marked state directory. Optional in-app updates use a separate launchd helper so stopping the main agent does not kill the updater. Downloads are checked against SHA256SUMS; program and data backups are retained, with startup-failure rollback as on Windows/Linux.
 
+After launchd stops its job, the application waits for the original process to exit. An exited zombie or a PID now owned by another process is treated as the old process having ended; no additional signal is sent to a reused PID. Native CI and release checks repeat installation, uninstall and reinstall three times on both architectures.
+
 These command-line binaries do not have an Apple Developer ID signature or Apple notarization. If macOS blocks a browser-downloaded binary, verify the checksum and follow [Apple's instructions for opening a trusted app](https://support.apple.com/en-us/102445). Do not disable Gatekeeper globally. Native CI covers macOS Intel and Apple Silicon; this is not a notarized `.app`/`.pkg` distribution.
 
 The service follows [Apple's LaunchAgent model](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html). macOS includes `launchctl` for loading and unloading these jobs, as described in [Apple's Terminal guide](https://support.apple.com/guide/terminal/script-management-with-launchd-apdc6c1077b-5d5d-4d35-9c19-60f2397b2369/mac).
