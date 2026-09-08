@@ -84,6 +84,7 @@ test.beforeAll(async () => {
     scan_interval_seconds: 600
   }));
   baseURL = `http://127.0.0.1:${port}`;
+  await writeFile(path.join(stateDir, ".codex-usage-updates.json"), JSON.stringify({ auto_check: false }));
   dashboardURL = `${baseURL}/?lang=zh-CN`;
   processHandle = spawn(path.resolve(binary), ["serve"], {
     env: {
@@ -120,6 +121,62 @@ test.afterAll(async () => {
   if (stateDir) await rm(stateDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   if (codexHomeDir) await rm(codexHomeDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   if (testBinaryDir) await rm(testBinaryDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+});
+
+test("updates require a choice, support later and disabling checks, and show recovery", async ({ page }, testInfo) => {
+  let update = { current_version: "2.5.0", latest_version: "2.6.0", available: true, can_install: true, auto_check: true, phase: "idle", release_url: "https://github.com/zJay26/codex-usage/releases/tag/v2.6.0" };
+  const installs = [];
+  await page.route("**/api/v1/updates**", async (route) => {
+    const request = route.request();
+    if (request.url().endsWith("/preferences")) update.auto_check = request.postDataJSON().auto_check;
+    if (request.url().endsWith("/install")) { installs.push(request.postDataJSON()); update.phase = "downloading"; }
+    await route.fulfill({ json: update });
+  });
+  await page.goto(dashboardURL);
+  await expect(page.locator("#updateBanner")).toBeVisible();
+  expect(installs).toEqual([]);
+  await page.locator("#dismissUpdate").click();
+  await page.reload();
+  await expect(page.locator("#updateBanner")).toBeHidden();
+  await page.locator("#updateButton").click();
+  await expect(page.locator("#installUpdate")).toBeEnabled();
+  await page.locator("#autoCheckUpdates").uncheck();
+  await expect(page.locator("#autoCheckUpdates")).not.toBeChecked();
+  await expect(page.locator("#checkUpdates")).toBeEnabled();
+  await page.locator("#checkUpdates").click();
+  await expect(page.locator("#installUpdate")).toBeEnabled();
+  expect(installs).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("updates-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await expect(page.locator("#updateDialog")).toHaveCSS("color", "rgb(241, 244, 240)");
+  await page.screenshot({ path: testInfo.outputPath("updates-mobile-dark.png") });
+  expect(await page.locator("#updateDialog .dialog-frame").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await page.locator("#installUpdate").click();
+  await expect(page.locator("#updateStatus")).toContainText("正在下载");
+  expect(installs).toEqual([{ version: "2.6.0", confirm: true }]);
+  await expect(page.locator("#installUpdate")).toBeDisabled();
+  update = { ...update, phase: "rolled_back", error: "Simulated startup failure" };
+  await expect(page.locator("#updateStatus")).toContainText("已恢复", { timeout: 10000 });
+  await expect(page.locator("#updateError")).toContainText("Simulated startup failure");
+  await expect(page.locator("#installUpdate")).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#updateDialog")).toBeHidden();
+  await page.goto(`${baseURL}/?lang=en`);
+  await page.locator("#updateButton").click();
+  await expect(page.locator("#updateTitle")).toHaveText("Software updates");
+  await expect(page.locator("#autoCheckUpdates")).not.toBeChecked();
+  expect(installs).toHaveLength(1);
+});
+
+test("preview updates preserve opt-out and never enable installation", async ({ page, request }) => {
+  await page.goto(dashboardURL);
+  await page.locator("#updateButton").click();
+  await expect(page.locator("#autoCheckUpdates")).not.toBeChecked();
+  await expect(page.locator("#installUpdate")).toBeDisabled();
+  await expect(page.locator("#updatePortable")).toBeVisible();
+  const rejected = await request.post(`${baseURL}/api/v1/updates/install`, { data: { version: "2.6.0" } });
+  expect(rejected.status()).toBe(400);
 });
 
 test("overview is calm, local-only, and exposes honest cost coverage", async ({ page }) => {

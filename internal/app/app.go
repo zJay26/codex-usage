@@ -31,7 +31,7 @@ import (
 )
 
 var (
-	Version   = "2.4.1"
+	Version   = "2.5.0"
 	Commit    = "dev"
 	BuildDate = "unknown"
 )
@@ -89,6 +89,8 @@ func (c CLI) Run(args []string) int {
 		err = c.serve(args, true)
 	case "install":
 		err = c.install(args)
+	case "_apply-update":
+		err = c.applyUpdate(args)
 	case "uninstall":
 		err = c.uninstall(args)
 	case "scan":
@@ -252,6 +254,9 @@ func (c CLI) serve(args []string, daemon bool) error {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.Signal(15))
 	defer cancel()
+	updates := newUpdater(state.paths)
+	state.server.Updates = updates
+	go updates.Run(ctx)
 	go func() {
 		result, scanErr := state.scanner.Scan(ctx, state.homes, false)
 		if scanErr != nil && !errors.Is(scanErr, context.Canceled) {
@@ -600,6 +605,9 @@ func (c CLI) install(args []string) error {
 		}
 	}
 	fmt.Fprintln(c.Stdout, c.tr("install.installed"), destination)
+	if err := recordInstallation(paths); err != nil {
+		return err
+	}
 
 	state, err := openState()
 	if err != nil {

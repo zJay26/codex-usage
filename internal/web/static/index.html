@@ -40,6 +40,10 @@
   </header>
 
   <main class="shell" id="mainContent" tabindex="-1">
+    <section class="update-banner hidden" id="updateBanner" aria-live="polite">
+      <span id="updateBannerText"></span>
+      <div><button class="text-button pressable" id="reviewUpdate" type="button" aria-haspopup="dialog" aria-controls="updateDialog" data-i18n="update.review">查看更新</button><button class="text-button pressable" id="dismissUpdate" type="button" data-i18n="update.later">稍后</button></div>
+    </section>
     <section class="demo-banner hidden" id="demoBanner" aria-labelledby="demoTitle">
       <span class="demo-beacon" aria-hidden="true"></span>
       <div><p class="eyebrow" data-i18n="demo.kicker">INTERACTIVE DEMO / SYNTHETIC DATA</p><strong id="demoTitle" data-i18n="demo.title">这是交互演示，不是你的本机数据</strong><p data-i18n="demo.body">仅使用会话内合成数据；不读取文件、不设 Cookie、无埋点或外部请求，刷新即复位。</p></div>
@@ -268,8 +272,22 @@
       </section>
     </section>
 
-    <footer><span data-i18n="footer.summary">本机 Session JSONL · API 等价成本并非账单 · 仅监听 127.0.0.1</span><span id="versionLabel"></span></footer>
+    <footer><span data-i18n="footer.summary">本机 Session JSONL · API 等价成本并非账单 · 仅监听 127.0.0.1</span><div class="footer-updates"><span id="versionLabel"></span><button class="text-button pressable" id="updateButton" type="button" aria-haspopup="dialog" aria-controls="updateDialog" data-i18n="update.title">软件更新</button></div></footer>
   </main>
+
+  <dialog class="modal-dialog update-dialog" id="updateDialog" aria-labelledby="updateTitle">
+    <div class="dialog-frame">
+      <div class="dialog-head"><h2 id="updateTitle" data-i18n="update.title">软件更新</h2><button class="dialog-close pressable" type="button" data-close aria-label="关闭" data-i18n-aria-label="update.close">×</button></div>
+      <p class="dialog-intro" data-i18n="update.intro">自动检查只获取 GitHub 的版本信息。点击“下载并更新”才会下载、校验并重启程序，保留已有统计和设置。</p>
+      <div class="update-versions"><span data-i18n="update.current">当前版本</span><strong id="updateCurrent">—</strong><span data-i18n="update.latest">最新稳定版</span><strong id="updateLatest">—</strong></div>
+      <p id="updateStatus" role="status"></p>
+      <p id="updateError" class="update-error hidden"></p>
+      <p id="updatePortable" class="dialog-intro hidden" data-i18n="update.portable">当前运行的是便携版或预览版。请从发布页下载并安装一次，之后即可在这里更新。</p>
+      <p><a id="updateReleaseLink" class="text-button" href="https://github.com/zJay26/codex-usage/releases" target="_blank" rel="noopener noreferrer" data-i18n="update.notes">查看发布说明</a></p>
+      <label class="update-preference"><input id="autoCheckUpdates" type="checkbox"><span data-i18n="update.auto">自动检查新版本（每 6 小时）</span></label>
+      <div class="dialog-actions"><button class="action-button quiet pressable" id="checkUpdates" type="button" data-i18n="update.check">检查更新</button><button class="action-button quiet pressable" type="button" data-close data-i18n="update.later">稍后</button><button class="action-button primary pressable" id="installUpdate" type="button" disabled data-i18n="update.install">下载并更新</button></div>
+    </div>
+  </dialog>
 
   <dialog class="sheet-dialog" id="filterSheet" aria-labelledby="filterTitle">
     <div class="dialog-frame">
@@ -379,5 +397,6 @@
   <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
   <script src="/i18n.js"></script>
   <script src="/app.js" defer></script>
+  <script src="/updates.js" defer></script>
 </body>
 </html>
