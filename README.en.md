@@ -29,7 +29,7 @@ All statistics stay on the current computer. codex-usage never stores prompts, r
 
 ## Install directly
 
-This README covers stable **[v2.6.1](https://github.com/zJay26/codex-usage/releases/tag/v2.6.1)**; see the [release notes](docs/releases/v2.6.1.md) for changes and upgrade boundaries. Download links below always resolve to the latest stable release.
+This README covers stable **[v2.6.2](https://github.com/zJay26/codex-usage/releases/tag/v2.6.2)**; see the [release notes](docs/releases/v2.6.2.md) for changes and upgrade boundaries. Download links below always resolve to the latest stable release.
 
 | System | amd64 / x64 | arm64 |
 |---|---|---|
@@ -89,6 +89,8 @@ Installation does not modify `PATH`. If you set `CODEX_USAGE_HOME`, use the exec
 Starting with **v2.5.0**, the application checks GitHub for the latest stable release every six hours by default. Updates are optional: open **Software updates** in the footer to review release notes, disable automatic checks, or check manually. Only **Download and update** downloads the release, verifies SHA256, backs up the program and local statistics, and replaces and restarts the application. A startup failure triggers an attempt to restore the previous program and data. Backups remain under `.codex-usage-updates/run-*` in the state directory.
 
 **Installed v2.5.0 or later can update in the app; versions before v2.5.0 require a manual download and `install` first.** Portable and preview copies only offer version checks and the release page. Checks fetch version information from GitHub, downloads come from this project's Release assets, and neither uploads usage, paths, or conversations. Turning off automatic checks stops background update requests. Re-running `install` remains available for manual upgrades.
+
+**Software updates** lets you set the update download directory, open the folder, or copy its path. The default is `codex-usage` inside your user Downloads directory. Version folders retain the release binaries, and the UI shows the full path of the last download. Directory changes only affect future downloads; existing files stay in place and database backups remain in the local state directory.
 
 Upgrading to v2.6 preserves existing statistics and applies accounting fixes to newly read records. To correct earlier undercounts, back up the state and verify retained JSONL coverage before explicitly running `scan --rebuild`; rebuilding cannot recover history whose source files have been deleted.
 

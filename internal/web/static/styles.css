@@ -65,6 +65,11 @@
 .update-error { color: var(--copper-strong); overflow-wrap: anywhere; }
 .update-dialog .dialog-actions { flex-wrap: wrap; }
 .update-dialog .dialog-actions .action-button { white-space: nowrap; }
+.update-directory { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.update-directory > label { display: block; margin-bottom: 8px; font-weight: 600; }
+.update-directory input { width: 100%; min-width: 0; padding: 10px 12px; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; font: inherit; }
+.update-directory-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.update-last-download { overflow-wrap: anywhere; color: var(--text-soft); font-size: var(--type-caption); user-select: text; }
 .mode-detail { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .8rem; color: var(--text-soft); margin: 6px 0 12px; }
 .mode-row-detail { display: grid; gap: 3px; font-size: .7rem; margin-top: 4px; }
 .hour-line-fast { fill: none; stroke: var(--copper); stroke-width: 2; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }

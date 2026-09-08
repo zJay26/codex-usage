@@ -287,6 +287,18 @@
       <p id="updateError" class="update-error hidden"></p>
       <p id="updatePortable" class="dialog-intro hidden" data-i18n="update.portable">当前运行的是便携版或预览版。请从发布页下载并安装一次，之后即可在这里更新。</p>
       <p><a id="updateReleaseLink" class="text-button" href="https://github.com/zJay26/codex-usage/releases" target="_blank" rel="noopener noreferrer" data-i18n="update.notes">查看发布说明</a></p>
+      <div class="update-directory">
+        <label for="updateDownloadDir" data-i18n="update.downloadDirectory">更新包下载目录</label>
+        <input id="updateDownloadDir" type="text" spellcheck="false" autocomplete="off" aria-describedby="updateDirectoryHint">
+        <p id="updateDirectoryHint" class="dialog-intro" data-i18n="update.directoryHint">填写完整目录路径。保存后用于下次下载；已有文件会保留在原处。</p>
+        <div class="update-directory-actions">
+          <button class="action-button quiet pressable" id="saveUpdateDirectory" type="button" data-i18n="update.saveDirectory">保存目录</button>
+          <button class="text-button pressable" id="resetUpdateDirectory" type="button" data-i18n="update.defaultDirectory">恢复默认</button>
+          <button class="text-button pressable" id="openUpdateDirectory" type="button" data-i18n="update.openDirectory">打开文件夹</button>
+          <button class="text-button pressable" id="copyUpdateDirectory" type="button" data-i18n="update.copyDirectory">复制路径</button>
+        </div>
+        <p id="updateLastDownload" class="update-last-download hidden"></p>
+      </div>
       <label class="update-preference"><input id="autoCheckUpdates" type="checkbox"><span data-i18n="update.auto">自动检查新版本（每 6 小时）</span></label>
       <div class="dialog-actions"><button class="action-button quiet pressable" id="checkUpdates" type="button" data-i18n="update.check">检查更新</button><button class="action-button quiet pressable" type="button" data-close data-i18n="update.later">稍后</button><button class="action-button primary pressable" id="installUpdate" type="button" disabled data-i18n="update.install">下载并更新</button></div>
     </div>
