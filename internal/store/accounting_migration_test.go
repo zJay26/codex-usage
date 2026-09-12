@@ -12,7 +12,7 @@ import (
 )
 
 func TestCounterScopeMigrationPreservesHistoryAndRequiresExplicitRebuild(t *testing.T) {
-	for _, version := range []int{8, 9} {
+	for _, version := range []int{8, 9, 10} {
 		for _, history := range []bool{false, true} {
 			t.Run(fmt.Sprintf("v%d/history=%v", version, history), func(t *testing.T) {
 				ctx := context.Background()
@@ -42,7 +42,7 @@ func TestCounterScopeMigrationPreservesHistoryAndRequiresExplicitRebuild(t *test
 				if err := st.Close(); err != nil {
 					t.Fatal(err)
 				}
-				wantPending := version == 9 && history
+				wantPending := history
 				// Reopening must preserve both the existing ledger and the marker.
 				for reopen := 0; reopen < 2; reopen++ {
 					st, err = Open(path)
@@ -65,7 +65,7 @@ func TestCounterScopeMigrationPreservesHistoryAndRequiresExplicitRebuild(t *test
 						t.Fatalf("retained history or immediate quality notice: %+v", summary)
 					}
 					reason, pending, err := st.HistoricalRebuildReason(ctx)
-					if err != nil || pending != wantPending || (pending && !strings.Contains(reason, "v2.6.0")) {
+					if err != nil || pending != wantPending || (pending && !strings.Contains(reason, "v2.6.4")) {
 						t.Fatalf("pending=%v reason=%q err=%v", pending, reason, err)
 					}
 					if err := st.Close(); err != nil {

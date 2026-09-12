@@ -86,7 +86,7 @@ func (s *Scanner) inheritTurnProgress(ctx context.Context, cursor *store.FileCur
 	if s.turnBaselines[cursor.TurnID] {
 		return nil
 	}
-	usage, err := s.Store.TurnUsage(ctx, cursor.SessionID, cursor.TurnID)
+	usage, err := s.Store.LegacyTurnUsage(ctx, cursor.SessionID, cursor.TurnID)
 	if err != nil {
 		return err
 	}

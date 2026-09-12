@@ -88,8 +88,10 @@ func TestV7ModeMigrationIsAdditive(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	if reason, pending, err := st.HistoricalRebuildReason(ctx); err != nil || pending {
-		t.Fatalf("unnecessary rebuild: %s %v", reason, err)
+	// Mode migration remains additive; the independent response accounting
+	// migration separately requests an explicit rebuild of the retained ledger.
+	if reason, pending, err := st.HistoricalRebuildReason(ctx); err != nil || !pending {
+		t.Fatalf("missing response-accounting rebuild notice: %s %v", reason, err)
 	}
 	s, err := st.Summary(ctx, model.Filter{})
 	if err != nil || s.Usage.Total != 12 || s.Modes.Unknown.Total != 12 || s.Modes.Regular.Total != 12 {
