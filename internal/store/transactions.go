@@ -87,10 +87,18 @@ func (s *Store) SessionAccounting(ctx context.Context, sessionID string) (Accoun
 }
 
 func (s *Store) TurnUsage(ctx context.Context, sessionID, turnID string) (model.TokenUsage, error) {
+	return s.turnUsage(ctx, sessionID, turnID, "")
+}
+
+func (s *Store) LegacyTurnUsage(ctx context.Context, sessionID, turnID string) (model.TokenUsage, error) {
+	return s.turnUsage(ctx, sessionID, turnID, " AND id NOT LIKE 'jsonl-response:%'")
+}
+
+func (s *Store) turnUsage(ctx context.Context, sessionID, turnID, extra string) (model.TokenUsage, error) {
 	var usage model.TokenUsage
 	err := s.reader().QueryRowContext(ctx, `SELECT COALESCE(SUM(input_tokens),0),COALESCE(SUM(cached_input_tokens),0),
 		COALESCE(SUM(cache_write_input_tokens),0),COALESCE(SUM(output_tokens),0),COALESCE(SUM(reasoning_output_tokens),0),COALESCE(SUM(total_tokens),0)
-		FROM usage_events WHERE provenance='session_jsonl' AND session_id=? AND turn_id=?`, sessionID, turnID).Scan(
+		FROM usage_events WHERE provenance='session_jsonl' AND session_id=? AND turn_id=?`+extra, sessionID, turnID).Scan(
 		&usage.Input, &usage.CachedInput, &usage.CacheWriteInput, &usage.Output, &usage.ReasoningOutput, &usage.Total)
 	return usage, err
 }

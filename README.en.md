@@ -29,7 +29,7 @@ All statistics stay on the current computer. codex-usage never stores prompts, r
 
 ## Install directly
 
-This README covers stable **[v2.6.3](https://github.com/zJay26/codex-usage/releases/tag/v2.6.3)**; see the [release notes](docs/releases/v2.6.3.md) for changes and upgrade boundaries. Download links below always resolve to the latest stable release.
+This README covers stable **[v2.6.4](https://github.com/zJay26/codex-usage/releases/tag/v2.6.4)**; see the [release notes](docs/releases/v2.6.4.md) for changes and upgrade boundaries. Download links below always resolve to the latest stable release.
 
 | System | amd64 / x64 | arm64 |
 |---|---|---|
@@ -92,7 +92,7 @@ Starting with **v2.5.0**, the application checks GitHub for the latest stable re
 
 **Software updates** lets you set the update download directory, open the folder, or copy its path. The default is `codex-usage` inside your user Downloads directory. Version folders retain the release binaries, and the UI shows the full path of the last download. Directory changes only affect future downloads; existing files stay in place and database backups remain in the local state directory.
 
-**v2.6.3 fixes repeated accounting of old usage in mixed cumulative records processed by v2.6.0–v2.6.2.** After upgrading from those versions, existing statistics are retained and flagged for review; incremental scans pause. Back up the state and verify source JSONL coverage, then select **Rescan → Approve and rebuild** or explicitly run `codex-usage scan --rebuild` to correct stored history. Rebuilding cannot recover deleted source files, and upgrading the binary alone does not correct old totals.
+**v2.6.4 fixes missing compaction usage and retains the v2.6.3 mixed-counter fix.** Upgrading an older ledger to schema v11 preserves its statistics and flags them for review; incremental scans pause. Back up the state and verify source JSONL coverage, then select **Rescan → Approve and rebuild** or explicitly run `codex-usage scan --rebuild` to correct history. Rebuilding cannot recover deleted source files, and upgrading the binary alone does not correct old totals.
 
 ## What you can see
 
@@ -165,7 +165,9 @@ flowchart LR
 
 The tool reads the current machine's `CODEX_HOME`. It first discovers canonical session metadata from the Codex state database, then streams JSONL files under `sessions/` and `archived_sessions/`.
 
-Token counters can continue across turns or reset at a turn boundary. Each boundary is evaluated separately: `total_token_usage` equal to `last_token_usage` at a new turn starts a fresh baseline, whether smaller than, equal to, or larger than the preceding total. A later continuation or repeated snapshot retains its baseline; one reset never classifies all future turns. When missing snapshots prevent distinguishing continuation from another reset, the scanner conservatively differences the counter and flags potentially incomplete usage. At **each** `token_count` record, the delta is assigned to the record timestamp's accounting calendar day. It never moves an entire multi-day session to the session's latest update date. Stable event IDs and cursors keep repeated scans idempotent. Large prompt, response, reasoning, and tool-output records are skipped without loading the entire line into memory or writing content to the database.
+Modern logs use `token_usage_record`, deduplicated by thread and `response_id`, with `turn_token_usage` reconciled against the existing turn ledger. Both ordinary responses and compaction requests count. Legacy `token_count` notifications for the same turn only advance the legacy cursor, and embedded copies in compaction history are not added again. Cumulative recovery of missing request details marks timestamp attribution uncertain; unmatched legacy notifications warn that tail usage may be missing.
+
+Older turns without independent response records retain cumulative differencing. A new turn whose `total_token_usage` equals `last_token_usage` starts a fresh baseline; continuations and repeated snapshots retain the prior baseline. Each event belongs to its timestamp's accounting calendar day, not the session's final update date. Uncertain boundaries remain visible. Old compactions without recorded usage cannot be reconstructed from context length. Request identities, stable event IDs and cursors keep rescans idempotent; large prompt, response, reasoning and tool-output records are skipped without storing their content.
 
 The Codex state database is used only to discover rollout paths and enrich titles, projects, and other metadata. Its `tokens_used` value never changes token totals. OpenAI's [`account/usage/read`](https://learn.chatgpt.com/docs/app-server#7-token-usage-chatgpt) is service-backed account activity; this tool counts only current-machine local JSONL, so the scopes differ.
 

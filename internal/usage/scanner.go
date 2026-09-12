@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -586,6 +587,8 @@ func (s *Scanner) processRecord(
 			}
 		}
 		return nil
+	case "token_usage_record":
+		return s.processResponse(ctx, env, path, home, meta, cursor, result)
 	case "event_msg":
 		var payload eventPayload
 		if err := json.Unmarshal(env.Payload, &payload); err != nil {
@@ -609,6 +612,11 @@ func (s *Scanner) processRecord(
 		}
 		cursor.TurnID = firstNonEmpty(payload.TurnID, cursor.TurnID)
 		unverifiedBoundary := selectCounterScope(cursor, info)
+		if detailed, err := s.Store.ResponseTurn(ctx, cursor.SessionID, cursor.TurnID); err != nil {
+			return err
+		} else if detailed {
+			return s.observeLegacyResponseTurn(ctx, info, path, cursor, result)
+		}
 		if err := s.inheritTurnProgress(ctx, cursor); err != nil {
 			return err
 		}
@@ -825,7 +833,8 @@ func (s *Scanner) inspectRollout(ctx context.Context, path string) (rolloutInspe
 	}
 	defer file.Close()
 	reader := bufio.NewReaderSize(file, 64<<10)
-	var offset int64
+	var offset, contextOffset int64
+	var contextTurn string
 	for {
 		if err := ctx.Err(); err != nil {
 			return out, err
@@ -846,6 +855,24 @@ func (s *Scanner) inspectRollout(ctx context.Context, path string) (rolloutInspe
 			var env envelope
 			if json.Unmarshal(record, &env) == nil {
 				switch env.Type {
+				case "turn_context":
+					var payload turnContextPayload
+					if json.Unmarshal(env.Payload, &payload) == nil {
+						contextTurn, contextOffset = payload.TurnID, recordStart
+					}
+				case "token_usage_record":
+					var payload responseUsageRecord
+					if json.Unmarshal(env.Payload, &payload) == nil && out.ForkedFromID != "" &&
+						payload.ThreadID == out.OwnerID && payload.TurnID != "" && payload.ResponseID != "" &&
+						validTokenUsage(payload.Usage.usage()) && !payload.Usage.usage().IsZero() {
+						// Explicit request ownership proves a child continuation even
+						// when there is no legacy token_count/task_started boundary.
+						out.ReplayOffset = recordStart
+						if contextTurn == payload.TurnID {
+							out.ReplayOffset = contextOffset
+						}
+						return out, nil
+					}
 				case "session_meta":
 					var payload sessionMetaPayload
 					if json.Unmarshal(env.Payload, &payload) == nil {
@@ -968,8 +995,9 @@ func implicitForkBaseline(total, last model.TokenUsage) (model.TokenUsage, bool)
 
 func validTokenUsage(usage model.TokenUsage) bool {
 	return usage.NonNegative() &&
-		usage.CachedInput+usage.CacheWriteInput <= usage.Input &&
+		usage.CachedInput <= usage.Input && usage.CacheWriteInput <= usage.Input-usage.CachedInput &&
 		usage.ReasoningOutput <= usage.Output &&
+		usage.Input <= math.MaxInt64-usage.Output &&
 		usage.Input+usage.Output == usage.Total
 }
 
@@ -1167,6 +1195,7 @@ func interestingProbe(probe []byte) bool {
 	return bytes.Contains(probe, []byte(`"session_meta"`)) ||
 		bytes.Contains(probe, []byte(`"turn_context"`)) ||
 		bytes.Contains(probe, []byte(`"task_started"`)) ||
+		bytes.Contains(probe, []byte(`"token_usage_record"`)) ||
 		bytes.Contains(probe, []byte(`"token_count"`))
 }
 

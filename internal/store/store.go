@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	schemaVersion               = 10
+	schemaVersion               = 11
 	historicalRebuildReasonKey  = "historical_rebuild_required"
 	pricingAggregatableEventSQL = `e.input_tokens>=0 AND e.cached_input_tokens>=0 AND e.cache_write_input_tokens>=0
 		AND e.output_tokens>=0 AND e.reasoning_output_tokens>=0 AND e.total_tokens>=0
@@ -376,6 +376,9 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := migrateAccounting(ctx, tx, databaseVersion); err != nil {
 		return err
 	}
+	if err := migrateResponses(ctx, tx, databaseVersion); err != nil {
+		return err
+	}
 	if databaseVersion > 0 && databaseVersion < 7 {
 		// Parser migrations can invalidate every derived event. Preserve the old
 		// ledger until the user explicitly approves a rebuild instead of deleting
@@ -667,7 +670,7 @@ func (s *Store) CorrectEventUsage(
 	}
 	databaseRows, err := tx.QueryContext(ctx, `SELECT id,input_tokens,cached_input_tokens,
 		cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens
-		FROM usage_events WHERE `+scopeWhere+` AND provenance='session_jsonl'
+		FROM usage_events WHERE `+scopeWhere+` AND provenance='session_jsonl' AND id NOT LIKE 'jsonl-response:%'
 		ORDER BY usage_at DESC,observed_at DESC,rowid DESC`, scopeArgs...)
 	if err != nil {
 		return false, err
@@ -943,6 +946,7 @@ func (s *Store) ResetHistorical(ctx context.Context) error {
 	defer tx.Rollback()
 	for _, stmt := range []string{
 		`DELETE FROM usage_events`,
+		`DELETE FROM response_records`,
 		`DELETE FROM file_cursors`,
 		`DELETE FROM session_cursors`,
 		`DELETE FROM sessions`,

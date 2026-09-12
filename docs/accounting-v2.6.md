@@ -1,5 +1,13 @@
 # v2.6 accounting and task relationships
 
+## Independent requests and compaction (v2.6.4)
+
+Modern `token_usage_record` entries identify a response and its actual usage, including compaction. `thread_id` establishes conversation ownership; `session_id` may identify a runtime instance. Persist `(thread_id, response_id)` identities and reconcile `turn_token_usage` against the ledger for that turn. A normal sequence contributes exactly each request's `usage`; a missing prefix may be recovered from the cumulative vector with uncertain timestamp attribution marked `gap_fallback`. Conflicting identities abort the file transaction. Replayed older responses do not advance the turn's high-water mark.
+
+Once valid independent records cover a turn, its legacy `event_msg.token_count` snapshots only maintain the legacy counter baseline. They never correct or add to the independent ledger. This matters because old counters may exclude compactions even after later normal requests. The `compacted` replacement history contains a mirror of the last response; it is not another request and remains excluded from the selective reader. Independent records are sufficient to count compactions without reading conversation history. A legacy notification with no matching independent request raises an incomplete-coverage warning rather than being blindly added. Turns without independent records retain the legacy rules below.
+
+Schema v11 introduces a numeric response-identity table. All older ledgers with JSONL history retain their events and cursors but require explicit rebuild before scanning continues. Rebuilding clears response identities and derived events together. Empty stores need no repair. The v2.6.3 migration behavior described below is historical; v2.6.4 also requests rebuild when upgrading directly from v2.5.0. Old compactions without recorded request usage cannot be inferred from context length.
+
 ## Counter scope and safe ingestion
 
 As of v2.6.3, every new turn is evaluated independently. A changed `turn_id` alone never resets cumulative totals, even after an earlier reset. A new turn whose complete `total_token_usage` equals `last_token_usage` establishes a fresh baseline, including totals smaller than, equal to, or larger than the preceding total. A later turn that continues the same series, or repeats an unchanged snapshot, retains its baseline. The duplicate path persists the new interpretation so the next incremental scan cannot inherit stale turn scope. Same-total classification corrections remain attached to the original usage.
