@@ -635,7 +635,7 @@ select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px col
 }
 
 @media (max-width: 620px) {
-  .topbar-inner { grid-template-columns: 1fr auto; }
+  .topbar-inner { grid-template-columns: 1fr auto; column-gap: 10px; }
   .brand-copy small { display: none; }
   .top-actions { gap: 5px; }
   .top-actions .icon-button { display: none; }
