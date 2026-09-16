@@ -71,13 +71,30 @@
           <button class="pressable selected" type="button" data-overview-range="7d" aria-pressed="true" data-i18n="range.7d">7 日</button>
           <button class="pressable" type="button" data-overview-range="30d" aria-pressed="false" data-i18n="range.30d">30 日</button>
           <button class="pressable" type="button" data-overview-range="all" aria-pressed="false" data-i18n="range.all">全部</button>
+          <button class="pressable" type="button" data-overview-range="custom" aria-pressed="false" aria-controls="customRangeForm" data-i18n="range.custom">自定义</button>
         </div>
       </div>
+
+      <form class="custom-range surface" id="customRangeForm" aria-label="自定义时间范围" data-i18n-aria-label="range.customAria" hidden>
+        <div class="custom-range-fields">
+          <label for="rangeStart"><span data-i18n="range.start">开始时间</span><input id="rangeStart" name="since" type="datetime-local" step="60" min="0001-01-01T00:00" max="9999-12-31T23:59" required aria-describedby="customRangeHint customRangeError"></label>
+          <span class="custom-range-arrow" aria-hidden="true">→</span>
+          <div class="custom-range-end">
+            <label for="rangeEnd"><span data-i18n="range.end">结束时间</span><input id="rangeEnd" name="until" type="datetime-local" step="60" min="0001-01-01T00:00" max="9999-12-31T23:59" required aria-describedby="customRangeHint customRangeError"></label>
+            <button class="action-button pressable" id="rangeNow" type="button" data-i18n="range.now" data-i18n-title="range.nowHint" title="将结束时间设为当前分钟">现在</button>
+          </div>
+          <button class="action-button primary pressable" id="queryRange" type="submit" data-i18n="range.query">查询用量</button>
+        </div>
+        <p class="custom-range-hint" id="customRangeHint"></p>
+        <p class="custom-range-status" id="customRangeStatus" role="status" hidden></p>
+        <p class="custom-range-error" id="customRangeError" role="alert" hidden></p>
+      </form>
 
       <section class="hero-metrics surface" aria-label="当前范围核心指标" data-i18n-aria-label="overview.metricsAria">
         <article class="hero-metric token-metric">
           <span class="metric-label" data-i18n="overview.total">总 Token</span>
           <strong class="hero-value loading" id="overviewTotal">—</strong>
+          <p class="exact-total" id="overviewExactTotal" hidden></p>
           <div class="mode-token-breakdown" id="overviewTokenModes"></div>
           <div class="metric-breakdown" id="overviewTokenBreakdown"></div>
         </article>

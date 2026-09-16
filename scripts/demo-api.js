@@ -156,6 +156,13 @@
   }
 
   function summary(url) {
+    if (url.searchParams.get("fill_days") === "0" || /T\d{2}:\d{2}$/.test(url.searchParams.get("since") || "")) {
+      const points = dailyPoints(url);
+      const usage = points.reduce((sum, point) => addUsage(sum, point.usage), zeroUsage());
+      return { usage, unattributed: zeroUsage(), grand_total: usage.total,
+        event_count: points.filter((point) => point.usage.total > 0).length,
+        session_count: usage.total ? sessions.length : 0, coverage_incomplete: false };
+    }
     const { start, end } = requestedBounds(url);
     const dayScale = start && end ? Math.min(1, Math.max(1 / 24, (end - start) / 86_400_000) / 30) : 1;
     const usage = scaledUsage(baseUsage, dayScale * filterScale(url));
@@ -177,9 +184,14 @@
     );
     const points = [];
     let index = 0;
-    for (let date = new Date(start); date < end && index < 120; date.setDate(date.getDate() + 1), index++) {
+    const firstDay = new Date(start);
+    firstDay.setHours(0, 0, 0, 0);
+    for (let date = firstDay; date < end && index < 120; date.setDate(date.getDate() + 1), index++) {
       const seed = Math.floor(date.getTime() / 86_400_000);
-      const total = seed % 11 === 3 ? 0 : Math.round((180_000 + (Math.sin(seed * .73) + 1.25) * 118_000 + (seed % 31) * 4_100) * filterScale(url));
+      const nextDay = new Date(date);
+      nextDay.setDate(nextDay.getDate() + 1);
+      const fraction = Math.max(0, Math.min(+end, +nextDay) - Math.max(+start, +date)) / (nextDay - date);
+      const total = seed % 11 === 3 ? 0 : Math.round((180_000 + (Math.sin(seed * .73) + 1.25) * 118_000 + (seed % 31) * 4_100) * filterScale(url) * fraction);
       const input = Math.round(total * .82);
       const output = total - input;
       const usage = { input, cached_input: Math.round(input * .56), cache_write_input: Math.round(input * .025), output, reasoning_output: Math.round(output * .37), total };
@@ -300,7 +312,7 @@
     };
   }
 
-  const demoUpdates = { current_version: "2.6.3-demo", latest_version: "2.6.3", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: false, can_install: false, phase: "idle", download_dir: "C:\\Users\\Demo\\Downloads\\codex-usage", default_download_dir: "C:\\Users\\Demo\\Downloads\\codex-usage", custom_download_dir: "", can_open_download_dir: false };
+  const demoUpdates = { current_version: "2.7.0-demo", latest_version: "2.7.0", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: false, can_install: false, phase: "idle", download_dir: "C:\\Users\\Demo\\Downloads\\codex-usage", default_download_dir: "C:\\Users\\Demo\\Downloads\\codex-usage", custom_download_dir: "", can_open_download_dir: false };
   async function syntheticFetch(input, init = {}) {
     const raw = typeof input === "string" ? input : input.url;
     const url = new URL(raw, root.location.href);
@@ -317,7 +329,7 @@
       return jsonResponse(demoUpdates);
     }
     if (endpoint === "/api/v1/status") return jsonResponse({
-      version: "2.6.3-demo", scanning: false,
+      version: "2.7.0-demo", scanning: false,
       status: {
         machine: { id: "synthetic-machine", label: "Synthetic Windows · demo", hostname: "synthetic-host", os: "windows", arch: "amd64" },
         last_scan: now.toISOString(), accounting_mode: "jsonl_only", otel_active: false,

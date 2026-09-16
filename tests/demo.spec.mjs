@@ -111,6 +111,27 @@ test("synthetic modes, Fast pricing, and export follow the accounting contract",
   expect(result.exported.every((row)=>row.service_mode==="fast"&&!row.mode_assumed)).toBeTruthy();
 });
 
+test("synthetic demo supports minute ranges with matching summary and daily totals", async ({ page }) => {
+  await page.goto(`${baseURL}?lang=en`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Custom", exact: true }).click();
+  await page.getByLabel("Start time", { exact: true }).fill("2026-09-16T23:59");
+  await page.getByLabel("End time", { exact: true }).fill("2026-09-17T00:01");
+  await page.getByRole("button", { name: "Query usage", exact: true }).click();
+  await expect(page.locator("#overviewExactTotal")).toContainText("Exact total:");
+  await expect(page.locator("#overviewSubtitle")).toHaveText("2026-09-16 23:59 → 2026-09-17 00:01");
+  await expect(page.locator("#queryRange")).toBeEnabled();
+  const totals = await page.evaluate(async () => {
+    const query = "since=2026-09-16T23%3A59&until=2026-09-17T00%3A01&fill_days=0";
+    const summary = await (await fetch(`/api/v1/summary?${query}`)).json();
+    const cost = await (await fetch(`/api/v1/cost-estimate?${query}`)).json();
+    return { total: summary.grand_total, points: cost.points.map((point) => point.usage.total) };
+  });
+  expect(totals.points).toHaveLength(2);
+  expect(totals.total).toBeGreaterThan(0);
+  expect(totals.total).toBe(totals.points.reduce((sum, total) => sum + total, 0));
+  await expect(page.locator("#customRangeError")).toBeHidden();
+});
+
 test("language priority, persistence, ARIA, pricing, scan, theme, and mobile layout work", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("codex-usage-locale", "zh-CN"));
   await page.goto(`${baseURL}?lang=en`, { waitUntil: "networkidle" });

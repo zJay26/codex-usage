@@ -29,7 +29,7 @@ All statistics stay on the current computer. codex-usage never stores prompts, r
 
 ## Install directly
 
-This README covers stable **[v2.6.4](https://github.com/zJay26/codex-usage/releases/tag/v2.6.4)**; see the [release notes](docs/releases/v2.6.4.md) for changes and upgrade boundaries. Download links below always resolve to the latest stable release.
+This README covers stable **[v2.7.0](https://github.com/zJay26/codex-usage/releases/tag/v2.7.0)**; see the [release notes](docs/releases/v2.7.0.md) for changes and upgrade boundaries. Download links below always resolve to the latest stable release.
 
 | System | amd64 / x64 | arm64 |
 |---|---|---|
@@ -193,6 +193,8 @@ Events, modes, counter progress and file offsets commit atomically per file. Dat
 The service scans once on startup, then checks only JSONL size and modification time every 30 seconds. It runs an incremental scan after a change and a fallback scan every 10 minutes. Dashboard reads use a separate read-only SQLite pool, so ingestion no longer queues every page query behind one connection. There is no central server or cross-machine sync.
 
 The Dashboard has three first-level views: Overview, Daily, and Details. Overview defaults to the last seven accounting calendar days. Daily fills zero-usage dates and supports calendar and hourly drill-down. Details includes model, source, agent, project, and thread dimensions, plus a Session list/task-tree switch.
+
+Select **Custom** in Overview, enter start and end times to the minute, and click **Query usage** to see total tokens, the exact total, and API-equivalent cost for that interval. **Now** fills the end time with the current minute; click Query usage to apply it. Inputs use the ledger's accounting timezone. The start is inclusive and the end is exclusive; editing inputs preserves the last queried results until you query again. Repeated DST minutes use their first occurrence, and nonexistent minutes return an error. The API accepts `since` / `until` as `YYYY-MM-DDTHH:mm` in the accounting timezone or RFC3339 with an explicit offset. The cost endpoint supports `fill_days=0` to skip filling zero-usage dates for unrestricted ranges.
 
 The task tree uses only explicit parent metadata from JSONL or the Codex state database; fork lineage is shown separately. Pagination selects roots with their descendants. Ancestors outside the filter provide structure without adding usage. Each row's tokens and cost belong to that task; the token subtotal includes its entire subtree under the current filter. Adding every row's subtree subtotal would double-count descendants. Missing parents and cycles appear as detached roots with diagnostic labels.
 

@@ -849,3 +849,101 @@ test("remote browser uses the ledger timezone and keeps hourly usage", async ({ 
     expect(new Set(series.points.map(p=>p.time)).size).toBe(series.points.length);
   } finally { await context.close(); }
 });
+
+test("custom minute range queries real event totals, validates bounds, and uses the ledger timezone for Now", async ({ browser }, testInfo) => {
+  const context = await browser.newContext({ timezoneId: "Pacific/Honolulu", viewport: { width: 1440, height: 1000 } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  try {
+    await page.goto(dashboardURL, { waitUntil: "networkidle" });
+    const status = await (await page.request.get(`${baseURL}/api/v1/status`)).json();
+    const all = await (await page.request.get(`${baseURL}/api/v1/summary`)).json();
+    const zone = status.status.accounting_timezone;
+    const minute = (date) => {
+      const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+        timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+      }).formatToParts(date).map((part) => [part.type, part.value]));
+      return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+    };
+    const start = minute(new Date(all.first_event));
+    const end = minute(new Date(new Date(all.first_event).getTime() + 60_000));
+    await page.locator('[data-overview-range="custom"]').click();
+    await expect(page.locator("#customRangeForm")).toBeVisible();
+    await expect(page.locator("#customRangeHint")).toContainText(zone);
+    await page.getByLabel("开始时间", { exact: true }).fill(start);
+    await page.getByLabel("结束时间", { exact: true }).fill(end);
+    const result = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/v1/summary" && url.searchParams.get("since") === start && url.searchParams.get("until") === end;
+    });
+    await page.getByRole("button", { name: "查询用量", exact: true }).click();
+    expect((await (await result).json()).grand_total).toBe(60);
+    await expect(page.locator("#overviewTotal")).toHaveText("60");
+    await expect(page.locator("#overviewExactTotal")).toHaveText("精确总量：60 Token");
+    await expect(page.locator("#overviewTokenBreakdown")).toContainText("Input48");
+    await expect(page.locator("#overviewCoverage")).toContainText("已定价 100.0% Token");
+    await expect(page.locator("#queryRange")).toBeEnabled();
+    const appliedSubtitle = await page.locator("#overviewSubtitle").textContent();
+
+    await page.locator("#rangeEnd").fill(start);
+    await expect(page.locator("#customRangeStatus")).toContainText("时间已修改");
+    await page.locator("#queryRange").click();
+    await expect(page.locator("#customRangeError")).toHaveText("结束时间必须晚于开始时间。");
+    await expect(page.locator("#overviewSubtitle")).toHaveText(appliedSubtitle);
+    await expect(page.locator("#overviewTotal")).toHaveText("60");
+    await page.locator("#rangeEnd").fill(minute(new Date(new Date(all.first_event).getTime() - 60_000)));
+    await page.locator("#queryRange").click();
+    await expect(page.locator("#customRangeError")).toHaveText("结束时间必须晚于开始时间。");
+    await page.locator("#rangeStart").fill("");
+    await page.locator("#queryRange").click();
+    expect(await page.locator("#rangeStart").evaluate((el) => el.validity.valueMissing)).toBe(true);
+
+    // A fixed instant close to midnight catches browser-local conversion and
+    // 12-hour clock mistakes without freezing timers used by the dashboard.
+    const fixedNow = new Date("2026-09-16T16:00:39Z");
+    await page.clock.setFixedTime(fixedNow);
+    await page.locator("#rangeNow").click();
+    await expect(page.locator("#rangeEnd")).toHaveValue(minute(fixedNow));
+    await expect(page.locator("#overviewSubtitle")).toHaveText(appliedSubtitle);
+    await page.locator("#rangeStart").fill(start);
+    await page.locator("#rangeEnd").fill(end);
+    await page.locator("#queryRange").click();
+    await expect(page.locator("#queryRange")).toBeEnabled();
+    await page.screenshot({ path: testInfo.outputPath("custom-range-desktop.png"), animations: "disabled" });
+
+    // The custom bounds survive navigation and preset changes; a preset must
+    // stop sending the minute filter and include all events in the session.
+    await page.locator('[data-overview-range="all"]').click();
+    await expect(page.locator("#customRangeForm")).toBeHidden();
+    await expect(page.locator("#overviewTotal")).toHaveText(String(all.grand_total));
+    await page.locator('[data-overview-range="custom"]').click();
+    await expect(page.locator("#rangeStart")).toHaveValue(start);
+    await expect(page.locator("#overviewTotal")).toHaveText("60");
+    await page.locator("#localeButton").click();
+    await expect(page.locator("#rangeNow")).toHaveText("Now");
+    await expect(page.locator("#queryRange")).toHaveText("Query usage");
+    await expect(page.locator("#overviewExactTotal")).toHaveText("Exact total: 60 tokens");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.evaluate(() => document.documentElement.dataset.theme = "dark");
+    expect(await page.locator("#customRangeForm").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await page.screenshot({ path: testInfo.outputPath("custom-range-mobile.png"), animations: "disabled" });
+    // Wider fallback fonts must not push the English header beyond the viewport.
+    await page.addStyleTag({ content: ":root { --body: Verdana, sans-serif; --display: Verdana, sans-serif; }" });
+    const fallbackLayout = await page.evaluate(() => ({
+      width: document.documentElement.scrollWidth,
+      overflow: [...document.querySelectorAll("body *")].filter((el) => el.getBoundingClientRect().right > innerWidth && el.getBoundingClientRect().width > 0)
+        .map((el) => ({ tag: el.tagName, id: el.id, class: el.className, right: el.getBoundingClientRect().right })).slice(0, 20)
+    }));
+    expect(fallbackLayout.width, JSON.stringify(fallbackLayout.overflow)).toBeLessThanOrEqual(390);
+
+    await page.locator("#rangeStart").fill("2000-01-01T00:00");
+    await page.locator("#rangeEnd").fill("2000-01-01T00:01");
+    await page.locator("#queryRange").click();
+    await expect(page.locator("#overviewExactTotal")).toHaveText("Exact total: 0 tokens");
+    await expect(page.locator("#queryRange")).toBeEnabled();
+    await expect(page.locator("#customRangeError")).toBeHidden();
+    expect(errors).toEqual([]);
+  } finally { await context.close(); }
+});
