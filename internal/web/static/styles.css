@@ -249,6 +249,30 @@ button:disabled { cursor: not-allowed; opacity: .52; }
 .view-panel.entering { animation: view-in 120ms var(--ease) both; }
 @keyframes view-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
 .view-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+.custom-range { margin-bottom: 18px; padding: 20px 24px; }
+.custom-range-fields { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.2fr) auto; align-items: end; gap: 16px; }
+.custom-range label { display: grid; gap: 7px; min-width: 0; color: var(--text-soft); font-size: var(--type-small); }
+.custom-range input { min-width: 0; font-family: var(--mono); font-size: var(--type-ui); }
+.custom-range-end { display: flex; align-items: end; gap: 8px; min-width: 0; }
+.custom-range-end label { flex: 1; }
+.custom-range .action-button { min-height: 42px; white-space: nowrap; }
+.custom-range-arrow { align-self: end; padding-bottom: 10px; color: var(--teal-strong); }
+.custom-range-hint, .custom-range-status, .custom-range-error { margin: 12px 0 0; font-size: var(--type-caption); line-height: 1.6; overflow-wrap: anywhere; }
+.custom-range-hint { color: var(--text-faint); }
+.custom-range-status { color: var(--text-soft); }
+.custom-range-error { color: var(--copper-strong); }
+.exact-total { margin: -2px 0 14px; color: var(--text-soft); font: var(--type-small) var(--mono); overflow-wrap: anywhere; }
+@media (max-width: 840px) {
+  .custom-range-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .custom-range-arrow { display: none; }
+  .custom-range-fields > button { justify-self: start; }
+}
+@media (max-width: 620px) {
+  .custom-range { padding: var(--density-mobile-panel); }
+  .custom-range-fields { grid-template-columns: minmax(0, 1fr); }
+  .custom-range-fields > button { justify-self: stretch; }
+  #view-overview .range-control { flex-wrap: wrap; }
+}
 .eyebrow { margin: 0 0 6px; color: var(--text-faint); font-family: var(--mono); font-size: var(--type-micro); font-weight: 650; letter-spacing: .12em; }
 h1, h2, h3 { font-family: var(--display); text-wrap: balance; }
 .view-heading h1 { margin: 0; font-size: clamp(1.875rem, 3vw, 2.625rem); line-height: 1.08; letter-spacing: -.045em; font-weight: 690; }

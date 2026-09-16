@@ -313,10 +313,15 @@ func (s *Server) handleCostEstimate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	report, err := pricing.FillDaily(builder.Report(), filter.Since, filter.Until, time.Now(), s.Store.Location())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+	report := builder.Report()
+	// Custom ranges may span arbitrary dates. Keep their event totals intact
+	// without allocating a zero-filled calendar for the entire interval.
+	if r.URL.Query().Get("fill_days") != "0" {
+		report, err = pricing.FillDaily(report, filter.Since, filter.Until, time.Now(), s.Store.Location())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, report)
 }
@@ -613,6 +618,9 @@ func parseFilterIn(query url.Values, loc *time.Location) (model.Filter, error) {
 			filter.UntilDate = value
 		}
 	}
+	if !filter.Since.IsZero() && !filter.Until.IsZero() && !filter.Since.Before(filter.Until) {
+		return filter, fmt.Errorf("until: 结束时间必须晚于开始时间 / End time must be after start time")
+	}
 	if value := query.Get("date"); value != "" {
 		if !isDateOnly(value) {
 			return filter, fmt.Errorf("date: 无效日期 %q", value)
@@ -710,6 +718,27 @@ func parseAbsoluteTime(value string) (time.Time, error) {
 	return parseAbsoluteTimeIn(value, time.Local)
 }
 func parseAbsoluteTimeIn(value string, loc *time.Location) (time.Time, error) {
+	// datetime-local values have no offset: interpret them in the ledger's
+	// accounting timezone, never in the remote browser's timezone.
+	const minuteLayout = "2006-01-02T15:04"
+	if len(value) == len(minuteLayout) {
+		if parsed, err := time.ParseInLocation(minuteLayout, value, loc); err == nil {
+			if parsed.Format(minuteLayout) != value {
+				return time.Time{}, fmt.Errorf("计量时区 %s 中不存在该时间 / Time does not exist in accounting timezone: %q", loc, value)
+			}
+			// A repeated wall-clock minute resolves to its first occurrence.
+			// Explicit RFC3339 offsets remain available for either occurrence.
+			_, offset := parsed.Zone()
+			for _, nearby := range []time.Time{parsed.Add(-24 * time.Hour), parsed.Add(24 * time.Hour)} {
+				_, otherOffset := nearby.Zone()
+				candidate := parsed.Add(time.Duration(offset-otherOffset) * time.Second)
+				if candidate.Before(parsed) && candidate.In(loc).Format(minuteLayout) == value {
+					parsed = candidate.In(loc)
+				}
+			}
+			return parsed, nil
+		}
+	}
 	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02"} {
 		if parsed, err := time.ParseInLocation(layout, value, loc); err == nil {
 			return parsed, nil

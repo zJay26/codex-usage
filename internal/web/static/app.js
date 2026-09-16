@@ -104,6 +104,9 @@ const state = {
   view: "overview",
   viewVisited: { overview: true, daily: false, details: false },
   overviewRange: "7d",
+  customRange: null,
+  customRangeLoading: false,
+  customRangeError: "",
   detailRange: "30d",
   detailDimension: "model",
   filters: {},
@@ -157,6 +160,13 @@ const addDays = (value, amount) => {
 let measurementTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const measuredDateKey = (date) => { const p=Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: measurementTimezone, year:"numeric",month:"2-digit",day:"2-digit" }).formatToParts(date).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`; };
 const todayKey = () => measuredDateKey(new Date());
+const measuredMinute = (date) => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+    timeZone: measurementTimezone, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+  }).formatToParts(date).map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+};
 const emptyUsage = () => ({ input: 0, cached_input: 0, cache_write_input: 0, output: 0, reasoning_output: 0, total: 0 });
 const usageTotal = (usage = {}) => Number(usage.total || (Number(usage.input || 0) + Number(usage.output || 0)) || 0);
 const hourKey = (date) => `${dateKey(date)}T${pad2(date.getHours())}`;
@@ -208,6 +218,11 @@ function fillCompleteHours(rawPoints, windows) {
 }
 
 function rangeBounds(range) {
+  if (range === "custom") {
+    if (state.filters.date) return {};
+    const { since, until } = state.customRange;
+    return { since, until, label: `${since.replace("T", " ")} → ${until.replace("T", " ")}` };
+  }
   if (range === "all") return { label: rangeLabel("all") };
   const today = dateFromKey(todayKey());
   const days = range === "today" ? 1 : range === "7d" ? 7 : 30;
@@ -218,7 +233,52 @@ function rangeBounds(range) {
   };
 }
 
+function syncCustomRangeControls() {
+  const active = state.overviewRange === "custom" && !state.filters.date;
+  $("#customRangeForm").hidden = !active;
+  $("#overviewExactTotal").hidden = !active;
+  $("#customRangeHint").textContent = t("range.hint", { zone: measurementTimezone });
+  const pending = state.customRange && ($("#rangeStart").value !== state.customRange.since || $("#rangeEnd").value !== state.customRange.until);
+  const status = $("#customRangeStatus");
+  status.textContent = pending ? t("range.pending") : state.customRangeLoading ? t("range.querying") : "";
+  status.hidden = !status.textContent;
+  $("#queryRange").disabled = state.customRangeLoading;
+  $("#customRangeError").textContent = state.customRangeError;
+  $("#customRangeError").hidden = !state.customRangeError;
+}
+
+function openCustomRange() {
+  if (!state.customRange) {
+    const now = new Date();
+    state.customRange = { since: measuredMinute(new Date(now.getTime() - 60 * 60_000)), until: measuredMinute(now) };
+    if (state.customRange.since >= state.customRange.until) {
+      state.customRange.since = measuredMinute(new Date(now.getTime() - 24 * 60 * 60_000));
+    }
+  }
+  $("#rangeStart").value = state.customRange.since;
+  $("#rangeEnd").value = state.customRange.until;
+  state.customRangeError = "";
+}
+
+function queryCustomRange(event) {
+  event.preventDefault();
+  if (!$("#customRangeForm").reportValidity()) return;
+  const since = $("#rangeStart").value;
+  const until = $("#rangeEnd").value;
+  if (since >= until) {
+    state.customRangeError = t("range.orderError");
+    syncCustomRangeControls();
+    $("#rangeEnd").focus();
+    return;
+  }
+  state.customRange = { since, until };
+  state.customRangeError = "";
+  state.pulseDate = "";
+  loadOverview();
+}
+
 function syncRangeControls() {
+  syncCustomRangeControls();
   const selectedDate = state.filters.date || "";
   $$('[data-overview-range]').forEach((button) => {
     const selected = !selectedDate && button.dataset.overviewRange === state.overviewRange;
@@ -420,6 +480,7 @@ async function loadStatus() {
   state.status = payload;
   const status = payload.status || {};
   if (status.accounting_timezone) measurementTimezone = status.accounting_timezone;
+  syncCustomRangeControls();
   $("#measurementTimezone").textContent = t("time.measurement", {zone:measurementTimezone});
   const revision = status.data_revision == null ? null : String(status.data_revision);
   const changed = (state.dataRevision !== null && revision !== null && revision !== state.dataRevision) || (state.pricingRevision != null && payload.pricing_revision != null && state.pricingRevision !== payload.pricing_revision);
@@ -557,12 +618,27 @@ function setLoading(element, label = null) {
 async function loadOverview({ preserve = false } = {}) {
   const serial = ++state.requestSerial.overview;
   const bounds = rangeBounds(state.overviewRange);
+  const custom = state.overviewRange === "custom" && !state.filters.date;
+  state.customRangeLoading = custom;
+  state.customRangeError = "";
+  syncCustomRangeControls();
   $("#overviewSubtitle").textContent = state.filters.date
     ? i18n.formatDate(dateFromKey(state.filters.date), { year: "numeric", month: "long", day: "numeric" })
     : bounds.label;
   if (!preserve) {
-    setLoading($("#overviewTotal"));
-    setLoading($("#overviewCost"));
+    setLoading($("#overviewTotal"), custom ? "—" : null);
+    setLoading($("#overviewCost"), custom ? "—" : null);
+    if (custom) {
+      $("#overviewExactTotal").textContent = "";
+      $("#overviewTokenModes").textContent = "";
+      $("#overviewTokenBreakdown").textContent = "";
+      $("#overviewCostModes").textContent = "";
+      $("#overviewCostNote").textContent = "";
+      $("#overviewCoverage").textContent = t("overview.estimating");
+      $("#overviewCoverageBar").style.width = "0%";
+      renderPulse([]);
+      renderOverviewModels([]);
+    }
   }
   loadHourlyUsage({ preserve: preserve || state.hourlyLoaded });
   $("#view-overview").setAttribute("aria-busy", "true");
@@ -573,7 +649,7 @@ async function loadOverview({ preserve = false } = {}) {
       state.overview = { ...(state.overview || {}), summary };
       renderOverviewSummary(summary);
     }).catch((error) => { firstError ||= error; }),
-    api(apiURL("/api/v1/cost-estimate", { ...bounds, bucket: "day" })).then((cost) => {
+    api(apiURL("/api/v1/cost-estimate", { ...bounds, bucket: "day", ...(custom ? { fill_days: "0" } : {}) })).then((cost) => {
       if (serial !== state.requestSerial.overview) return;
       state.overview = { ...(state.overview || {}), cost };
       renderOverviewCost(cost);
@@ -581,7 +657,15 @@ async function loadOverview({ preserve = false } = {}) {
   ]);
   if (serial !== state.requestSerial.overview) return;
   $("#view-overview").removeAttribute("aria-busy");
-  if (firstError) toast(t("dynamic.overviewError", { error: firstError.message }), true);
+  state.customRangeLoading = false;
+  if (firstError) {
+    if (custom) {
+      state.customRangeError = t("dynamic.overviewError", { error: firstError.message });
+      $("#overviewTotal").classList.remove("loading");
+      $("#overviewCost").classList.remove("loading");
+    } else toast(t("dynamic.overviewError", { error: firstError.message }), true);
+  }
+  syncCustomRangeControls();
 }
 
 async function loadHourlyUsage({ preserve = false } = {}) {
@@ -910,6 +994,7 @@ function renderOverviewSummary(summary) {
   const totalNode = $("#overviewTotal");
   totalNode.textContent = formatToken(total);
   totalNode.title = `${fullToken(total)} Total Token`;
+  $("#overviewExactTotal").textContent = t("range.exactTotal", { tokens: fullToken(total) });
   totalNode.classList.remove("loading");
   const usage = summary.usage || emptyUsage();
   $("#overviewTokenModes").innerHTML = modeDetail(summary);
@@ -942,7 +1027,8 @@ function renderPulse(allPoints) {
   const limited = points.length > 90;
   if (limited) points = points.slice(-90);
   const caption = $("#pulseCaption");
-  if (caption) caption.textContent = limited ? t("dynamic.pulseLimited") : t("pulse.caption");
+  if (caption) caption.textContent = limited ? t("dynamic.pulseLimited")
+    : state.overviewRange === "custom" && !state.filters.date ? t("range.pulseCaption") : t("pulse.caption");
   const belt = $("#pulseBelt");
   if (!points.length) {
     belt.style.minWidth = "100%";
@@ -1679,12 +1765,23 @@ function setupEvents() {
   enableNativeDatePicker($("#hourlyDatePicker"));
   $$('[data-overview-range]').forEach((button) => button.addEventListener("click", () => {
     state.overviewRange = button.dataset.overviewRange;
+    if (state.overviewRange === "custom") openCustomRange();
     delete state.filters.date;
     resetDataSelections();
     renderFilterChips();
     syncFilterForm();
     loadOverview();
   }));
+  $("#customRangeForm").addEventListener("submit", queryCustomRange);
+  $("#customRangeForm").addEventListener("input", () => {
+    state.customRangeError = "";
+    syncCustomRangeControls();
+  });
+  $("#rangeNow").addEventListener("click", () => {
+    $("#rangeEnd").value = measuredMinute(new Date());
+    state.customRangeError = "";
+    syncCustomRangeControls();
+  });
   $$('[data-detail-range]').forEach((button) => button.addEventListener("click", () => {
     state.detailRange = button.dataset.detailRange;
     delete state.filters.date;

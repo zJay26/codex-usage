@@ -1564,6 +1564,11 @@ func canonicalWhere(filter model.Filter, alias string) (string, []any) {
 	}
 	parts := []string{alias + ".provenance='session_jsonl'"}
 	var args []any
+	if !filter.Since.IsZero() || !filter.Until.IsZero() {
+		// Zero is the sentinel for missing timestamps, not usage at the Unix
+		// epoch. Such records cannot be attributed to a requested time range.
+		parts = append(parts, alias+".usage_at<>0")
+	}
 	if filter.SinceDate != "" {
 		parts = append(parts, alias+".local_date>=?")
 		args = append(args, filter.SinceDate)
