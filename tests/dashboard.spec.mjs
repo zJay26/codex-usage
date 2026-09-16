@@ -931,7 +931,12 @@ test("custom minute range queries real event totals, validates bounds, and uses 
     await page.screenshot({ path: testInfo.outputPath("custom-range-mobile.png"), animations: "disabled" });
     // Wider fallback fonts must not push the English header beyond the viewport.
     await page.addStyleTag({ content: ":root { --body: Verdana, sans-serif; --display: Verdana, sans-serif; }" });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    const fallbackLayout = await page.evaluate(() => ({
+      width: document.documentElement.scrollWidth,
+      overflow: [...document.querySelectorAll("body *")].filter((el) => el.getBoundingClientRect().right > innerWidth && el.getBoundingClientRect().width > 0)
+        .map((el) => ({ tag: el.tagName, id: el.id, class: el.className, right: el.getBoundingClientRect().right })).slice(0, 20)
+    }));
+    expect(fallbackLayout.width, JSON.stringify(fallbackLayout.overflow)).toBeLessThanOrEqual(390);
 
     await page.locator("#rangeStart").fill("2000-01-01T00:00");
     await page.locator("#rangeEnd").fill("2000-01-01T00:01");

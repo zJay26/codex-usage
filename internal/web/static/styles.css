@@ -695,6 +695,7 @@ select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px col
 
 @media (max-width: 390px) {
   .topbar-inner, .shell { width: calc(100% - 18px); }
+  .machine-pill { display: none; }
   .brand-mark { width: 31px; height: 31px; }
   .brand-copy strong { font-size: var(--type-body); }
   .calendar-panel { padding: 14px 10px 16px; }
