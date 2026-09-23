@@ -18,6 +18,36 @@ func TestResolveGPT6AstraPricing(t *testing.T) {
 	}
 }
 
+func TestResolveGPT6SolAndLunaPricing(t *testing.T) {
+	for _, tt := range []struct {
+		name                              string
+		input, cached, cacheWrite, output int64
+	}{
+		{"gpt-6-sol", 2000, 200, 2500, 10000},
+		{"gpt-6-luna", 100, 10, 125, 500},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, name := range []string{tt.name, tt.name + "-2026-09-22"} {
+				rate, ok, err := Resolve(name, nil)
+				if err != nil || !ok || rate.CanonicalModel != tt.name || rate.Custom ||
+					rate.InputNanoPerToken != tt.input || rate.CachedNanoPerToken != tt.cached ||
+					rate.CacheWriteNanoPerToken == nil || *rate.CacheWriteNanoPerToken != tt.cacheWrite ||
+					rate.OutputNanoPerToken != tt.output {
+					t.Fatalf("%s: rate=%+v ok=%v err=%v", name, rate, ok, err)
+				}
+			}
+			overrides, err := NormalizeOverrides(map[string]Override{"internal": {AliasOf: tt.name}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			rate, ok, err := Resolve("internal", overrides)
+			if err != nil || !ok || !rate.Custom || rate.CanonicalModel != tt.name {
+				t.Fatalf("alias: rate=%+v ok=%v err=%v", rate, ok, err)
+			}
+		})
+	}
+}
+
 func TestResolveBuiltInAndVersionedSnapshot(t *testing.T) {
 	rate, ok, err := Resolve("gpt-5.6-sol-2026-07-15", nil)
 	if err != nil {
@@ -116,7 +146,7 @@ func TestNormalizeOverridesRejectsInvalidValues(t *testing.T) {
 }
 
 func TestModelMatchingDoesNotGuessFamilies(t *testing.T) {
-	for _, name := range []string{"gpt-5.6-turbo", "gpt-5.4-pro", "codex-auto-review", ""} {
+	for _, name := range []string{"gpt-6", "gpt-6-sol-preview", "gpt-6-luna-turbo", "gpt-6-luna-2026-02-30", "gpt-5.6-turbo", "gpt-5.4-pro", "codex-auto-review", ""} {
 		if _, ok, err := Resolve(name, nil); err != nil || ok {
 			t.Fatalf("model %q should remain unpriced, ok=%v err=%v", name, ok, err)
 		}

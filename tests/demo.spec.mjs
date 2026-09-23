@@ -132,6 +132,33 @@ test("synthetic demo supports minute ranges with matching summary and daily tota
   await expect(page.locator("#customRangeError")).toBeHidden();
 });
 
+test("synthetic catalog supports GPT-6 aliases and Fast estimates", async ({ page }) => {
+  await page.goto(`${baseURL}?lang=en`, { waitUntil: "networkidle" });
+  await page.locator("#pricingButton").click();
+  await page.locator(".catalog-disclosure summary").click();
+  const card = page.locator('[data-pricing-model="codex-auto-review"]');
+  await card.locator("[data-rate-mode]").selectOption("alias");
+  for (const item of [
+    { model: "gpt-6-sol", display: "GPT-6 Sol", rates: ["2.00", "0.20", "2.50", "10.00"] },
+    { model: "gpt-6-luna", display: "GPT-6 Luna", rates: ["0.10", "0.01", "0.125", "0.50"] }
+  ]) {
+    const row = page.locator("#pricingCatalog .catalog-row").filter({ has: page.getByRole("link", { name: item.display, exact: true }) });
+    await expect(row.locator("span")).toHaveText(item.rates);
+    await card.locator("[data-alias]").selectOption(item.model);
+    await expect(card.locator("[data-alias]")).toHaveValue(item.model);
+    const result = await page.evaluate(async (model) => {
+      await fetch("api/v1/pricing/overrides", { method: "PUT", body: JSON.stringify({ overrides: { "codex-auto-review": { alias_of: model } } }) });
+      const base = await (await fetch("api/v1/cost-estimate?model=codex-auto-review&mode=fast")).json();
+      const fast = await (await fetch("api/v1/cost-estimate?model=codex-auto-review&mode=fast&cost_basis=codex_fast_weighted")).json();
+      return { base: base.summary, fast: fast.summary };
+    }, item.model);
+    expect(Number(result.base.usd)).toBeGreaterThan(0);
+    expect(Number(result.fast.usd)).toBeCloseTo(Number(result.base.usd) * 2.5, 7);
+    expect(result.fast.coverage_ratio).toBe(1);
+    expect(result.fast.unpriced_tokens).toBe(0);
+  }
+});
+
 test("language priority, persistence, ARIA, pricing, scan, theme, and mobile layout work", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("codex-usage-locale", "zh-CN"));
   await page.goto(`${baseURL}?lang=en`, { waitUntil: "networkidle" });

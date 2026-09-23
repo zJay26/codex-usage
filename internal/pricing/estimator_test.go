@@ -55,6 +55,46 @@ func TestEvaluateEventSeparatesOverlappingTokenCategories(t *testing.T) {
 	}
 }
 
+func TestGPT6SolAndLunaCategoryEstimates(t *testing.T) {
+	for _, tt := range []struct {
+		name, regular, cached, write, output, standard, fast string
+	}{
+		{"gpt-6-sol", "0.001400000", "0.000040000", "0.000250000", "0.001000000", "0.002690000", "0.006725000"},
+		{"gpt-6-luna", "0.000070000", "0.000002000", "0.000012500", "0.000050000", "0.000134500", "0.000336250"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, basis := range []string{Basis, FastWeightedBasis} {
+				b, err := NewBuilderForBasis(nil, basis)
+				if err != nil {
+					t.Fatal(err)
+				}
+				event := model.UsageEvent{
+					Model: tt.name, Confidence: model.ConfidenceExact,
+					ServiceMode: model.ModeFromTier("fast", "jsonl_turn_context"),
+					Usage:       model.TokenUsage{Input: 1000, CachedInput: 200, CacheWriteInput: 100, Output: 100, ReasoningOutput: 50, Total: 1100},
+				}
+				if err := b.Add(event); err != nil {
+					t.Fatal(err)
+				}
+				report := b.Report()
+				got := report.Summary
+				want := tt.standard
+				if basis == FastWeightedBasis {
+					want = tt.fast
+				} else if got.RegularInputUSD != tt.regular || got.CachedInputUSD != tt.cached || got.CacheWriteInputUSD != tt.write || got.OutputUSD != tt.output {
+					t.Fatalf("categories overlap: %+v", got)
+				}
+				if got.USD != want || got.StandardBaseUSD != tt.standard || got.PricedTokens != 1100 || got.UnpricedTokens != 0 || got.CoverageRatio != 1 || len(got.Reasons) != 0 {
+					t.Fatalf("%s: %+v", basis, got)
+				}
+				if !report.Modes.Fast.Equal(event.Usage) {
+					t.Fatalf("Fast weighting changed raw tokens: %+v", report.Modes)
+				}
+			}
+		})
+	}
+}
+
 func TestEvaluateEventAlwaysUsesStandardShortContextRates(t *testing.T) {
 	event := model.UsageEvent{
 		Model: "gpt-5.6-sol", Confidence: model.ConfidenceGapFallback,
