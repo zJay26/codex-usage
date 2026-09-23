@@ -18,11 +18,11 @@ schema v7 到 v8 为增量迁移，不清除账目或扫描游标，不要求全
 
 ## 费用口径
 
-常规沿用既有 Standard API 价格及本机定价覆写。Fast 的相同 token 分类基础费用乘以 ChatGPT Codex 额度倍率：GPT-6 Astra、GPT-5.6 Sol/Terra/Luna、GPT-5.5 为 2.5；GPT-5.4 为 2。别名与日期快照通过模型目录解析，不将 mini、Spark、未知模型或未确认的自定义模型自动套入倍率。
+常规沿用既有 Standard API 价格及本机定价覆写。Fast 的相同 token 分类基础费用乘以 ChatGPT Codex 额度倍率：GPT-6 Astra/Sol/Luna、GPT-5.6 Sol/Terra/Luna、GPT-5.5 为 2.5；GPT-5.4 为 2。别名与日期快照通过模型目录解析，不将 mini、Spark、未知模型或未确认的自定义模型自动套入倍率。
 
 界面统一称为“API 等价成本”，以一句话显示 API 价格和 Fast 额度规则的更新日期。计算仍为额度倍率加权的估算，不是实际 API Priority 账单，也不是账号额度扣除记录。未知单价、缺失缓存写入价格、缺少 Fast 倍率的部分继续显示为未定价。
 
-倍率核对于 2026-09-07：[OpenAI Fast 模式说明](https://learn.chatgpt.com/docs/agent-configuration/speed)。历史估算使用当前目录与倍率，不模拟历史账单。
+倍率核对于 2026-09-23：[OpenAI Fast 模式说明](https://learn.chatgpt.com/docs/agent-configuration/speed)。历史估算使用当前目录与倍率，不模拟历史账单。
 
 ## API 与导出
 

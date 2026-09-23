@@ -8,7 +8,7 @@ import (
 )
 
 const FastWeightedBasis = "codex_fast_weighted"
-const FastRulesAsOf = "2026-09-07"
+const FastRulesAsOf = "2026-09-23"
 const FastRulesSource = "https://learn.chatgpt.com/docs/agent-configuration/speed"
 
 func ValidBasis(basis string) bool {
@@ -40,7 +40,7 @@ func FastMultiplier(canonical string) (int64, int64, bool) {
 		canonical = rate.CanonicalModel
 	}
 	switch canonical {
-	case "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5":
+	case "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5":
 		return 5, 2, true
 	case "gpt-5.4":
 		return 2, 1, true

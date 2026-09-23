@@ -947,3 +947,60 @@ test("custom minute range queries real event totals, validates bounds, and uses 
     expect(errors).toEqual([]);
   } finally { await context.close(); }
 });
+
+test("GPT-6 Sol and Luna price recorded usage and appear in the catalog", async ({ page }, testInfo) => {
+  const cases = [
+    { model: "gpt-6-sol", recorded: "gpt-6-sol", display: "GPT-6 Sol", rates: ["2.00", "0.20", "2.50", "10.00"], standard: "0.002690000", fast: "0.006725000" },
+    { model: "gpt-6-luna", recorded: "gpt-6-luna-2026-09-22", display: "GPT-6 Luna", rates: ["0.10", "0.01", "0.125", "0.50"], standard: "0.000134500", fast: "0.000336250" }
+  ];
+  const timestamp = new Date().toISOString();
+  const usage = { input_tokens: 1000, cached_input_tokens: 200, cache_write_input_tokens: 100, output_tokens: 100, reasoning_output_tokens: 50, total_tokens: 1100 };
+  for (const item of cases) {
+    const id = `e2e-${item.model}`;
+    const fixture = [
+      { timestamp, type: "session_meta", payload: { id, cwd: "synthetic://gpt6-pricing", originator: "codex_desktop" } },
+      { timestamp, type: "turn_context", payload: { turn_id: id, model: item.recorded, service_tier: "fast" } },
+      { timestamp, type: "token_usage_record", payload: { thread_id: id, session_id: id, turn_id: id, response_id: `${id}-response`, usage, turn_token_usage: usage } }
+    ];
+    await writeFile(path.join(codexHomeDir, "sessions", `${id}.jsonl`), `${fixture.map((row) => JSON.stringify(row)).join("\n")}\n`);
+  }
+  const scan = await page.request.post(`${baseURL}/api/v1/rescan`, { data: {}, headers: { Origin: baseURL } });
+  expect(scan.ok()).toBeTruthy();
+  const get = async (url) => {
+    const response = await page.request.get(`${baseURL}/api/v1/${url}`);
+    expect(response.ok()).toBeTruthy();
+    return response.json();
+  };
+  const catalog = await get("pricing");
+  for (const item of cases) {
+    expect(catalog.unpriced_models.map((row) => row.key)).not.toContain(item.recorded);
+    const summary = await get(`summary?model=${item.recorded}`);
+    expect(summary.grand_total).toBe(1100);
+    expect(summary.modes.fast.total).toBe(1100);
+    const standard = await get(`cost-estimate?model=${item.recorded}`);
+    const fast = await get(`cost-estimate?model=${item.recorded}&cost_basis=codex_fast_weighted`);
+    expect(standard.summary.usd).toBe(item.standard);
+    expect(fast.summary.usd).toBe(item.fast);
+    expect(fast.summary.standard_base_usd).toBe(item.standard);
+    expect(fast.summary.coverage_ratio).toBe(1);
+    expect(fast.summary.unpriced_tokens).toBe(0);
+    const sessions = await get(`session-estimates?model=${item.recorded}&cost_basis=codex_fast_weighted`);
+    expect(sessions.items).toHaveLength(1);
+    expect(sessions.items[0].estimate.usd).toBe(item.fast);
+  }
+
+  await page.goto(dashboardURL, { waitUntil: "networkidle" });
+  await page.locator("#pricingButton").click();
+  await page.locator(".catalog-disclosure summary").click();
+  await page.locator("#newOverrideModel").fill("e2e-gpt6-alias");
+  await page.locator("#addOverride").click();
+  const card = page.locator('[data-pricing-model="e2e-gpt6-alias"]');
+  await card.locator("[data-rate-mode]").selectOption("alias");
+  for (const item of cases) {
+    const row = page.locator("#pricingCatalog .catalog-row").filter({ has: page.getByRole("link", { name: item.display, exact: true }) });
+    await expect(row.locator("span")).toHaveText(item.rates);
+    await card.locator("[data-alias]").selectOption(item.model);
+    await expect(card.locator("[data-alias]")).toHaveValue(item.model);
+  }
+  await page.screenshot({ path: testInfo.outputPath("gpt6-pricing-catalog.png") });
+});

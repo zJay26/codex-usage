@@ -29,7 +29,7 @@ All statistics stay on the current computer. codex-usage never stores prompts, r
 
 ## Install directly
 
-This README covers stable **[v2.7.0](https://github.com/zJay26/codex-usage/releases/tag/v2.7.0)**; see the [release notes](docs/releases/v2.7.0.md) for changes and upgrade boundaries. Download links below always resolve to the latest stable release.
+This README covers stable **[v2.7.1](https://github.com/zJay26/codex-usage/releases/tag/v2.7.1)**; see the [release notes](docs/releases/v2.7.1.md) for changes and upgrade boundaries. Download links below always resolve to the latest stable release.
 
 | System | amd64 / x64 | arm64 |
 |---|---|---|
@@ -208,11 +208,13 @@ The Dashboard shows regular, Fast, and all tokens, with a mode filter. Raw Fast 
 
 The estimator streams the normalized events that already passed source de-duplication and attribution filtering. It runs at query time, writes no cost data to SQLite, and leaves existing token totals unchanged. Arithmetic uses fixed-point nano-USD. Cached Input and Cache Write are removed from regular Input, and Reasoning is already included in Output, so neither is charged twice.
 
-The bundled Standard text price catalog was updated on **2026-09-05**. All values are USD / 1M tokens:
+The bundled Standard text price catalog was updated on **2026-09-23**. All values are USD / 1M tokens:
 
 | Model | Input | Cached | Cache Write | Output |
 |---|---:|---:|---:|---:|
 | [GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra) | 10.00 | 1.00 | 12.50 | 50.00 |
+| [GPT-6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol) | 2.00 | 0.20 | 2.50 | 10.00 |
+| [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna) | 0.10 | 0.01 | 0.125 | 0.50 |
 | [GPT-5.6 Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol) | 5.00 | 0.50 | 6.25 | 30.00 |
 | [GPT-5.6 Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra) | 2.00 | 0.20 | 2.50 | 12.00 |
 | [GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) | 0.20 | 0.02 | 0.25 | 1.20 |
@@ -222,7 +224,7 @@ The bundled Standard text price catalog was updated on **2026-09-05**. All value
 | [GPT-5.3-Codex](https://developers.openai.com/api/docs/models/gpt-5.3-codex) | 1.75 | 0.175 | not published | 14.00 |
 | [GPT-5.2-Codex](https://developers.openai.com/api/docs/models/gpt-5.2-codex) | 1.75 | 0.175 | not published | 14.00 |
 
-GPT-6 Astra and GPT-5.6 Cache Write use the official 1.25× regular Input rule. Local JSONL stores cumulative token activity and cannot reliably reconstruct the per-request boundaries used for API billing. The estimator uses the Standard base rates above, adjusts explicitly identified Fast usage, and does not infer long-context multipliers. The UI always shows estimated cost together with token pricing coverage; unknown models are never treated as zero-cost.
+GPT-6 Astra/Sol/Luna and GPT-5.6 Cache Write use the official 1.25× regular Input rule. Local JSONL stores cumulative token activity and cannot reliably reconstruct the per-request boundaries used for API billing. The estimator uses the Standard base rates above, adjusts explicitly identified Fast usage, and does not infer long-context multipliers. The UI always shows estimated cost together with token pricing coverage; unknown models are never treated as zero-cost.
 
 Internal models can be explicitly mapped to one built-in public model or assigned custom rates in the Dashboard. Overrides take effect without restarting:
 

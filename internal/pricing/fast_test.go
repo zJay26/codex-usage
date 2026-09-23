@@ -19,6 +19,8 @@ func TestFastMultiplierIntegerRounding(t *testing.T) {
 func TestFastWeightedPricing(t *testing.T) {
 	for _, tt := range []struct{ name, want string }{
 		{"gpt-6-astra", "150.000000000"}, {"gpt-5.6-sol", "87.500000000"},
+		{"gpt-6-sol", "30.000000000"}, {"gpt-6-luna", "1.500000000"},
+		{"gpt-6-sol-2026-09-22", "30.000000000"}, {"gpt-6-luna-2026-09-22", "1.500000000"},
 		{"gpt-5.6-terra", "35.000000000"}, {"gpt-5.6-luna", "3.500000000"},
 		{"gpt-5.5", "87.500000000"}, {"gpt-5.6", "87.500000000"},
 		{"gpt-5.5-2026-09-01", "87.500000000"}, {"gpt-5.4", "35.000000000"}, {"gpt-5.4-mini", "0.000000000"},
