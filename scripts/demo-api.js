@@ -2,6 +2,9 @@
   "use strict";
 
   root.CODEX_USAGE_DEMO = true;
+  // Keep incomplete accounting examples available for diagnostics, while the
+  // default demo represents a healthy ledger with fully priced current models.
+  const diagnostics = new URL(root.location.href).searchParams.get("scenario") === "diagnostics";
   const now = new Date();
   let pricingOverrides = {};
 
@@ -22,9 +25,9 @@
     { model: "gpt-5.4", display_name: "GPT-5.4", input_usd_per_million: "2.50", cached_input_usd_per_million: "0.25", output_usd_per_million: "15.00", source: "#synthetic-pricing" }
   ];
   const models = [
-    { key: "gpt-5.4", share: .57, events: 71, sessions: 15 },
-    { key: "gpt-5.6-terra", share: .31, events: 32, sessions: 8 },
-    { key: "codex-auto-review", share: .12, events: 11, sessions: 3 }
+    { key: diagnostics ? "gpt-5.4" : "gpt-6-sol", share: .57, events: 71, sessions: 15 },
+    { key: diagnostics ? "gpt-5.6-terra" : "gpt-6-astra", share: .31, events: 32, sessions: 8 },
+    { key: diagnostics ? "codex-auto-review" : "gpt-6-luna", share: .12, events: 11, sessions: 3 }
   ];
   const agents = [
     { key: "main", share: .75, events: 80, sessions: 20 },
@@ -45,9 +48,9 @@
     { key: "JSONL fork replay audit", share: .39, events: 9, sessions: 1 }
   ];
   const sessions = [
-    { session_id: "demo-session-a", title: "Dashboard localization", project_path: "synthetic://visual-lab", model: "gpt-5.4", source: "codex_desktop", agent_type: "main", share: .48, confidence: "exact", hoursAgo: 0 },
-    { session_id: "demo-session-b", title: "JSONL fork replay audit", project_path: "synthetic://service-api", model: "gpt-5.6-terra", source: "codex_cli_rs", agent_type: "subagent", share: .31, confidence: "gap_fallback", hoursAgo: 2 },
-    { session_id: "demo-session-c", title: "Local data-quality review", project_path: "synthetic://visual-lab", model: "gpt-5.4", source: "codex_desktop", agent_type: "guardian", share: .21, confidence: "exact", hoursAgo: 7 }
+    { session_id: "demo-session-a", title: "Dashboard localization", project_path: "synthetic://visual-lab", model: models[0].key, source: "codex_desktop", agent_type: "main", share: .48, confidence: "exact", hoursAgo: 0 },
+    { session_id: "demo-session-b", title: "JSONL fork replay audit", project_path: "synthetic://service-api", model: models[1].key, source: "codex_cli_rs", agent_type: "subagent", share: .31, confidence: diagnostics ? "gap_fallback" : "exact", hoursAgo: 2 },
+    { session_id: "demo-session-c", title: "Local data-quality review", project_path: "synthetic://visual-lab", model: models[2].key, source: "codex_desktop", agent_type: "guardian", share: .21, confidence: "exact", hoursAgo: 7 }
   ];
 
   const pad = (value) => String(value).padStart(2, "0");
@@ -310,7 +313,7 @@
       catalog_as_of: "2026-09-23",
       catalog,
       overrides: pricingOverrides,
-      unpriced_models: pricingOverrides["codex-auto-review"] ? [] : [{ key: "codex-auto-review", usage: scaledUsage(baseUsage, .12), events: 9, sessions: 3 }]
+      unpriced_models: !diagnostics || pricingOverrides["codex-auto-review"] ? [] : [{ key: "codex-auto-review", usage: scaledUsage(baseUsage, .12), events: 9, sessions: 3 }]
     };
   }
 
@@ -335,7 +338,7 @@
       status: {
         machine: { id: "synthetic-machine", label: "Synthetic Windows · demo", hostname: "synthetic-host", os: "windows", arch: "amd64" },
         last_scan: now.toISOString(), accounting_mode: "jsonl_only", otel_active: false,
-        event_count: 114, session_count: 26, warning_count: 2, data_revision: "demo-1",
+        event_count: 114, session_count: 26, warning_count: diagnostics ? 2 : 0, data_revision: "demo-1",
         codex_homes: [{ path: "synthetic://codex-home", last_scan: now.toISOString(), files_scanned: 26 }]
       }
     });
@@ -370,10 +373,10 @@
       const payload = withModes(sessionPayload(url),url);
       return jsonResponse({ items: payload.items.map((item) => ({ session_id: item.session_id, estimate: item.estimate })) });
     }
-    if (endpoint === "/api/v1/warnings") return jsonResponse({ items: [
+    if (endpoint === "/api/v1/warnings") return jsonResponse({ items: diagnostics ? [
       { created_at: now.toISOString(), first_seen: new Date(now.getTime() - 86_400_000).toISOString(), occurrences: 1, kind: "fork_replay_detected", path: "synthetic://rollout", detail: "Synthetic copied parent history was skipped and the JSONL index was rebuilt." },
       { created_at: now.toISOString(), occurrences: 1, kind: "cumulative_gap_fallback", path: "synthetic://rollout", detail: "Synthetic cumulative boundary could not be fully verified; last_token_usage conservatively filled the delta." }
-    ] });
+    ] : [] });
     if (endpoint === "/api/v1/pricing" && method === "GET") return jsonResponse(pricingPayload());
     if (endpoint === "/api/v1/pricing/overrides" && method === "PUT") {
       try {

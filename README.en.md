@@ -2,9 +2,9 @@
 
 # codex-usage
 
-**Which machine, model, project, or session used your Codex tokens?**
+**Your Codex usage, clear at a glance.**
 
-*See local Codex usage by machine, model, project, and session—with API-equivalent cost estimates.*
+*A complete, thoughtfully built local dashboard. From each computer to every task.*
 
 [Live Demo](https://zjay26.github.io/codex-usage/?lang=en) · [Windows x64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-windows-amd64.exe) · [Linux x64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-amd64) · [macOS Apple Silicon](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-arm64) · [All downloads](#install-directly) · English / [简体中文](README.md)
 
@@ -15,17 +15,21 @@
 
 </div>
 
-![12-second Codex Usage demo: per-machine tokens, date drill-down, filters, and equivalent cost](docs/media/codex-usage-demo.gif)
+![Complete Codex Usage tour: precise time ranges, hourly trends, calendar, task trees, search, Fast filters, exports, pricing, and themes](docs/media/codex-usage-demo-en.gif)
 
-> The animation shows the basic workflows; try the new task tree in the Live Demo's Details view. All demos use synthetic data, without reading your files, setting cookies, running analytics, or making external requests.
+Overview → minute-precision time range → hourly drill-down → calendar → projects and task trees → search and Fast filters → JSON / CSV export → model pricing → themes and languages.
 
-## Understand it in 30 seconds
+[Try the interactive demo](https://zjay26.github.io/codex-usage/?lang=en) · [High-resolution video](docs/media/codex-usage-demo-en.mp4)
 
-If you use Codex on more than one computer, an account total cannot tell you **which machine, project, model, or Session used the tokens**. codex-usage fills in that local detail.
+> Recorded directly from the current Dashboard with healthy, fully priced synthetic data. The online demo does not read your files, set cookies, run analytics, or make external requests.
 
-Install it once on each computer, then open the Dashboard in your browser to see totals, daily and hourly trends, models, and projects. Search Sessions or switch to a collapsible main-task/subtask tree to see each task's tokens and API-equivalent cost. New local usage appears automatically.
+## From the big picture to every task
 
-All statistics stay on the current computer. codex-usage never stores prompts, replies, or tool output, and does not read `auth.json`. It extracts only usage and mode metadata, skipping conversation strings in diagnostic records. Cost is an estimate based on public API rates and Fast credit multipliers, not an OpenAI bill or account quota.
+**codex-usage is a complete local usage dashboard built for people who use Codex every day.** Totals, trends, costs, models, projects, and tasks come together in one clear interface. Start with the big picture, then follow a date, hour, model, or task to understand what drove consumption. It is useful on a single computer, and per-machine accounting keeps each host's usage clear when you share an account across devices.
+
+Install once to index existing history and keep new usage up to date. **Go from “How much did I use today?” to “What did these 90 minutes, this project, or this task tree consume?” in the same interface.** Regular / Fast breakdowns, minute-precision ranges, Session search, combined filters, API-equivalent costs, and exports are all included. English and Chinese, light and dark themes, display settings, and a mobile layout make it comfortable to check every day.
+
+One binary runs on Windows, Linux / WSL, or macOS, with no database service or central server to deploy. Statistics stay on the current computer; prompts, replies, and tool output are never stored, and `auth.json` is never read. Costs are estimates using bundled public API prices and Fast credit multipliers, not actual bills or account quotas.
 
 ## Install directly
 
@@ -94,35 +98,23 @@ Starting with **v2.5.0**, the application checks GitHub for the latest stable re
 
 **v2.6.4 fixes missing compaction usage and retains the v2.6.3 mixed-counter fix.** Upgrading an older ledger to schema v11 preserves its statistics and flags them for review; incremental scans pause. Back up the state and verify source JSONL coverage, then select **Rescan → Approve and rebuild** or explicitly run `codex-usage scan --rebuild` to correct history. Rebuilding cannot recover deleted source files, and upgrading the binary alone does not correct old totals.
 
-## What you can see
-
-| Question | What codex-usage shows |
-|---|---|
-| Which machine used the tokens? | Separate statistics for each Windows, WSL, Linux, or macOS host, without mixing in other computers on the account |
-| Which models and token categories drove usage? | Model plus Input, Cached, Cache Write, Output, and Reasoning composition |
-| Which work drove it? | Project, Thread, Session, and main task, Subagent, Guardian, or Memory attribution |
-| When did it happen? | Today, 7 days, 30 days, all time, and daily/hourly details in one accounting time zone |
-| What did one Session use? | Session-level tokens and API-equivalent cost, with search and a one-click “Only this Session” filter |
-| How much did a main task's subtasks use? | Switch Details to the task tree, collapse parent/child relationships, and compare own usage with totals including subtasks |
-| What would all of this roughly cost at API rates? | Overall and itemized API-equivalent cost, plus explicit pricing coverage |
-
-## Highlights
+## A complete toolkit for everyday use
 
 | Capability | What you get |
 |---|---|
-| Per-machine attribution | Keep work, home, Windows, WSL, Linux, and macOS usage clearly separated |
-| History and incremental scans | Find existing records after installation and add new local usage automatically |
-| Optional software updates | Check and notify automatically; download and install only when chosen, with an opt-out for automatic checks |
-| Total and Fast | Keep total tokens prominent, show regular / Fast beneath the overview, and show total plus Fast in trends, models, and sessions |
+| Totals and costs at a glance | Total tokens, Input / Cached / Cache Write / Output / Reasoning composition, API-equivalent costs, and pricing coverage |
+| Custom time ranges | Today, 7 days, 30 days, all time, or any minute-precision interval; query across dates and see the unabridged total |
+| Regular / Fast breakdowns | Total and Fast usage across overview, trends, models, and tasks; filter to Fast and estimate cost using supported credit multipliers |
+| Daily and hourly drill-down | Trends, calendars, zero-usage days, hourly distribution, and model composition in one accounting timezone, including repeated DST hours |
+| Multiple attribution views | Explore models, sources, projects, Threads, Sessions, and main tasks, Subagents, Guardians, or Memory |
 | Main tasks and subtasks | Collapse explicit parent/child links; compare own and subtree usage while costs remain own-only |
-| Session search and filters | Search by Thread, Session ID, project, model, or source; click an active quick filter again to clear it |
-| Daily and hourly drill-down | Explore trends, calendar days, zero-usage days, and hourly distribution; remote browsers follow the footer's accounting zone, including repeated DST hours |
-| Consistent usage and costs | Session search, tokens, and costs share a filter scope; caches refresh after other processes change statistics or pricing |
-| Multi-dimensional details | Understand usage by model, token category, source, project, Thread, Session, and Agent |
-| Equivalent cost | See API-equivalent cost overall and per Session; unpriced usage is clearly marked instead of looking free |
-| Local and private | Keep data on the current computer, with no conversation uploads or central server |
-| Lightweight install | One file for Windows / Linux / macOS and amd64 / arm64, with no separate database to install |
-| Bilingual | Switch the Dashboard and CLI between English and Simplified Chinese |
+| Search, filter, and export | Search task titles, Session IDs, projects, models, or sources; combine date, mode, and Agent filters, then export the current scope as JSON / CSV |
+| Configurable model pricing | Bundled prices for GPT-6 Astra / Sol / Luna and more, internal-model aliases, and local rate overrides; unpriced usage stays explicit |
+| Comfortable interface | English / Chinese, light / dark themes, font and density settings, reduced motion, and mobile layouts; tokens and costs follow the same filters |
+| Per-machine accounting | View work and home computers, Windows / WSL / Linux / macOS hosts independently and locate each one's consumption |
+| Continuous indexing and checks | Scan history and new records; handle duplicates, fork replays, and compaction requests; preserve statistics and ask before a required rebuild |
+| Lightweight install and updates | Single binaries for six platform / architecture combinations, no external database, optional update checks, and user-controlled installation |
+| Local and private | Data stays on the current computer, web assets are embedded, and no usage or conversations are uploaded to a central server |
 
 ## Scope and boundaries
 
@@ -135,7 +127,7 @@ Starting with **v2.5.0**, the application checks GitHub for the latest stable re
 
 > “Machine” means the host running Codex and codex-usage, not a remote target used by a shell or tool. Codex's official `/usage` shows account-level activity; codex-usage adds detailed attribution for the current computer.
 
-<details><summary>View basic interface screenshots (earlier release; use Live Demo for current interactions)</summary>
+<details><summary>View current desktop and mobile screenshots (synthetic data)</summary>
 
 ![Codex Usage Dashboard](docs/images/dashboard.png)
 
@@ -323,6 +315,8 @@ npm test
 ```
 
 By default, `npm test` builds and launches a real Go binary in a temporary directory. Set `CODEX_USAGE_BIN` to reuse an existing build.
+
+Regenerate README animations, videos, and screenshots with `npm run capture:media`; see [media notes](docs/media/README.md) for dependencies, scenarios, and recording checks.
 
 Current [CI](https://github.com/zJay26/codex-usage/actions/workflows/ci.yml) covers Go tests and vet on Windows, Linux, macOS Apple Silicon / Intel, Linux concurrency checks, six-target cross-builds, and Dashboard tests. Each macOS architecture also runs three install/uninstall/reinstall cycles. Release publication requires the native macOS checks to pass.
 

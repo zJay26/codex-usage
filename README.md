@@ -2,9 +2,9 @@
 
 # codex-usage
 
-**同一个 Codex 账号：哪台电脑、哪个模型、哪个项目和会话用掉了 Token？**
+**让 Codex 用量一目了然。**
 
-*Which machine, model, project, or session used your Codex tokens?*
+*完整、顺手的本地用量仪表盘，从每台电脑到每一次任务。*
 
 [在线体验](https://zjay26.github.io/codex-usage/?lang=zh-CN) · [Windows x64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-windows-amd64.exe) · [Linux x64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-amd64) · [macOS Apple Silicon](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-arm64) · [全部下载](#直接安装) · [English](README.en.md) / 简体中文
 
@@ -15,17 +15,21 @@
 
 </div>
 
-![Codex Usage 12 秒演示：逐电脑 Token、日期下钻、筛选与等价成本](docs/media/codex-usage-demo.gif)
+![Codex Usage 完整演示：精确时间查询、小时趋势、月历、任务树、搜索、Fast 筛选、导出、定价与明暗主题](docs/media/codex-usage-demo.gif)
 
-> 动图展示基础操作；新增任务树可在在线 Demo 的“明细”中体验。演示全部使用合成数据，不读取你的文件、不设 Cookie、无埋点或外部请求。
+概览 → 分钟级时间查询 → 小时下钻 → 每日月历 → 项目与任务树 → 搜索与 Fast 筛选 → JSON / CSV 导出 → 模型定价 → 明暗主题与中英切换。
 
-## 30 秒理解
+[亲手试用在线 Demo](https://zjay26.github.io/codex-usage/?lang=zh-CN) · [高清演示视频](docs/media/codex-usage-demo-zh.mp4)
 
-如果你在多台电脑上使用 Codex，账号总量并不能告诉你：**究竟是哪台电脑、哪个项目、哪个模型或哪段 Session 用掉了 Token**。codex-usage 就是补上这张本机明细表。
+> 演示使用完整定价、无异常记录的合成数据，直接录制当前 Dashboard。在线 Demo 不读取你的文件、不设 Cookie、无埋点或外部请求。
 
-每台电脑安装一次，之后打开浏览器就能查看总量、每日与小时趋势、模型和项目分布；Session 明细可以搜索，也可以切换为可折叠的主任务／子任务树，查看各任务的 Token 与 API 等价费用。页面会自动跟进本机后续产生的用量。
+## 从总览到每一次任务
 
-所有统计都留在当前电脑上；不保存 prompt、回复或工具输出，也不读取 `auth.json`。程序仅提取用量和模式元数据，跳过诊断记录中的对话字符串。费用按公开 API 单价及 Fast 额度倍率做等价估算，不是 OpenAI 账单或账号配额。
+**codex-usage 是为日常高频使用 Codex 打磨的完整本地用量统计工具。** 总量、趋势、费用、模型、项目和任务明细集中在一个清晰的 Dashboard：先看全貌，再顺着日期、小时、模型或任务找到消耗来源。单台电脑用起来完整顺手，多台电脑使用同一账号时，逐电脑统计又能让每台主机的用量各自清楚。
+
+安装一次，历史记录自动整理，后续用量持续更新。**从“今天用了多少”到“这 90 分钟、这个项目、这棵子任务树花了多少”，都能在同一个界面里查清。** 常规 / Fast 拆分、精确到分钟的时间范围、Session 搜索、组合筛选、API 等价费用和数据导出一应俱全；中英双语、明暗主题、显示设置与手机布局让日常查看同样舒服。
+
+Windows、Linux / WSL、macOS 均可使用，一个程序即可安装，无需部署数据库或中心服务器。所有统计留在当前电脑，不保存 prompt、回复或工具输出，也不读取 `auth.json`。费用是按内置公开 API 单价及 Fast 额度倍率计算的等价估算，并非真实账单或账号配额。
 
 ## 直接安装
 
@@ -94,35 +98,23 @@ chmod +x codex-usage
 
 **v2.6.4 修复压缩请求漏计，保留 v2.6.3 的混合累计修复。** 旧版统计库升级到 schema v11 后，已有统计会保留并标记为需要核对，增量扫描暂停。先备份并确认源 JSONL 仍齐全，再点击“重新扫描”并选择“同意并重建”，或显式执行 `codex-usage scan --rebuild`，修正历史用量。源文件已删除的历史无法由重建恢复；只升级程序不会自动修正旧账。
 
-## 你能看到什么
-
-| 你想知道 | codex-usage 给出的视图 |
-|---|---|
-| 哪台电脑用了 Token？ | 每台 Windows、WSL、Linux 或 macOS 主机独立统计，不混入账号在其他电脑上的用量 |
-| 用在了什么模型和内容类型？ | 模型及 Input、Cached、Cache Write、Output、Reasoning 构成 |
-| 哪项工作驱动了用量？ | 项目、Thread、Session，以及主任务、Subagent、Guardian、Memory 归属 |
-| 什么时候发生？ | 今天、7 日、30 日、全部历史，以及统一计量时区下的自然日与小时详情 |
-| 某段 Session 花了多少？ | Session 级 Token 与 API 等价费用；可搜索，也可一键只看当前 Session |
-| 主任务带来了多少子任务用量？ | 在“明细”切换任务树，折叠查看父子关系、本任务用量与包含子任务的合计 |
-| 如果全部按 API 价格折算呢？ | 总体与分项的 API 等价费用，并明确显示有多少 Token 能够定价 |
-
-## 功能亮点
+## 为日常使用打磨的完整功能
 
 | 功能 | 你得到什么 |
 |---|---|
-| 逐电脑归属 | 每台电脑独立统计，清楚区分公司电脑、家用电脑、Windows、WSL、Linux 或 macOS |
-| 历史与增量同步 | 安装后先整理已有记录，后续用量自动进入 Dashboard |
-| 可选软件更新 | 自动检查并提示新版本，由用户选择下载和安装，也可关闭自动检查 |
-| 总量与 Fast | 以总 Token 为主，概览下方显示常规 / Fast 拆分；趋势、模型和任务同时显示总量与 Fast |
+| 一眼看清总量与费用 | 总 Token、Input / Cached / Cache Write / Output / Reasoning 构成、API 等价成本与定价覆盖率集中展示 |
+| 自定义时间查询 | 今天、7 日、30 日、全部历史，或精确到分钟的任意起止范围；跨天查询并显示未经缩写的精确总量 |
+| 常规 / Fast 拆分 | 总览、趋势、模型和任务展示总量与 Fast；可只看 Fast 消耗，并按支持模型的额度倍率折算费用 |
+| 每日与小时下钻 | 连续趋势、月历、零用量日、小时分布与模型组成；远程浏览器遵循统一计量时区，正确区分夏令时重复小时 |
+| 多维用量归属 | 按模型、来源、项目、Thread、Session，以及主任务、Subagent、Guardian、Memory 理解消耗 |
 | 主任务与子任务树 | 折叠查看明确父子关系，区分本任务与含子任务用量；费用列仅计本任务 |
-| Session 搜索与筛选 | 按 Thread、Session ID、项目、模型或来源搜索；快捷筛选再次点击即可取消 |
-| 每日与小时下钻 | 查看连续趋势、月历、零用量日与小时分布；远程浏览器遵循页脚计量时区，正确区分夏令时重复小时 |
-| 一致的统计与费用 | Session 搜索、Token、费用使用同一筛选范围；其他进程写入统计或修改定价后，缓存随数据版本刷新 |
-| 多维明细 | 按模型、Token 类型、来源、项目、Thread、Session 和 Agent 理解用量 |
-| 等价费用 | 总览和 Session 都显示 API 等价费用；无法定价的部分会明确标出，不会假装免费 |
-| 本地与隐私 | 数据只留在当前电脑，不上传对话，也不依赖中心服务器 |
-| 轻量部署 | Windows / Linux / macOS、amd64 / arm64 都是单文件程序，无需另装数据库 |
-| 中英双语 | Dashboard 与 CLI 都可切换简体中文或 English |
+| 搜索、筛选与导出 | 搜索任务标题、Session ID、项目、模型或来源，组合日期 / 模式 / Agent 等筛选，一键导出当前范围的 JSON / CSV |
+| 可配置的模型定价 | 内置 GPT-6 Astra / Sol / Luna 等模型价格，支持内部模型映射和本机单价覆写；无法定价的部分明确标出 |
+| 顺手的界面 | 中英双语、明暗主题、字体与密度设置、减少动态效果、手机适配；统计与费用始终跟随同一筛选范围 |
+| 逐电脑独立统计 | 公司电脑、家用电脑及 Windows / WSL / Linux / macOS 主机分别查看，定位各自的消耗 |
+| 持续更新与数据核对 | 自动整理历史并增量扫描；识别重复、fork 重放和压缩请求，需要重建时保留统计并请求确认 |
+| 轻量安装与软件更新 | 六种平台 / 架构的单文件程序，无需外置数据库；可选自动检查新版本，由用户选择下载安装 |
+| 本地与隐私 | 数据留在当前电脑，页面资源离线内嵌，不上传用量或对话，不依赖中心服务器 |
 
 ## 范围与边界
 
@@ -135,7 +127,7 @@ chmod +x codex-usage
 
 > “电脑”指运行 Codex 客户端和 codex-usage 的主机，不是 shell 或 tool 实际执行的远程环境。Codex 官方 `/usage` 查看账号级活动；codex-usage 补充当前电脑上的详细归属。
 
-<details><summary>查看基础界面截图（早期版本；当前交互见在线 Demo）</summary>
+<details><summary>查看当前桌面与手机界面（合成数据）</summary>
 
 ![Codex Usage Dashboard](docs/images/dashboard.png)
 
@@ -325,6 +317,8 @@ npm test
 ```
 
 `npm test` 默认在临时目录构建并启动真实 Go 二进制；设置 `CODEX_USAGE_BIN` 可以复用已有构建产物。
+
+README 动图、视频和截图可通过 `npm run capture:media` 重新生成；依赖、演示场景与录制检查见 [媒体说明](docs/media/README.md)。
 
 当前 [CI](https://github.com/zJay26/codex-usage/actions/workflows/ci.yml) 覆盖 Windows、Linux、macOS Apple Silicon / Intel 的 Go 测试与 vet、Linux 并发检查、六目标交叉构建及 Dashboard 测试；两个 macOS 架构还各执行三轮安装、卸载和重装。Release 发布也要求原生 macOS 检查通过。
 

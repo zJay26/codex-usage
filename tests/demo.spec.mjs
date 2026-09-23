@@ -76,9 +76,15 @@ test("Pages subpath loads the canonical UI with synthetic-only APIs", async ({ p
   await page.getByRole("tab", { name: "Details" }).click();
   await expect(page.getByRole("heading", { name: "Session details" })).toBeVisible();
 
-  await page.locator("#warningButton").click();
-  await expect(page.getByText("Raw diagnostic").first()).toBeVisible();
-  await page.locator("#warningsDialog [data-close]").click();
+  await expect(page.locator("#coverageBanner")).toBeHidden();
+  await expect(page.locator("#overviewCoverage")).toContainText("100");
+  const health = await page.evaluate(async () => ({
+    warnings: await (await fetch("api/v1/warnings")).json(),
+    cost: await (await fetch("api/v1/cost-estimate?cost_basis=codex_fast_weighted")).json()
+  }));
+  expect(health.warnings.items).toEqual([]);
+  expect(health.cost.summary.coverage_ratio).toBe(1);
+  expect(health.cost.summary.unpriced_tokens).toBe(0);
 
   const initialSessions = await page.locator(".session-row").count();
   await page.locator("#filterButton").click();
@@ -93,7 +99,11 @@ test("Pages subpath loads the canonical UI with synthetic-only APIs", async ({ p
 });
 
 test("synthetic modes, Fast pricing, and export follow the accounting contract", async ({page}) => {
-  await page.goto(`${baseURL}?lang=en`, {waitUntil:"networkidle"});
+  await page.goto(`${baseURL}?lang=en&scenario=diagnostics`, {waitUntil:"networkidle"});
+  await expect(page.locator("#coverageBanner")).toBeVisible();
+  await page.locator("#warningButton").click();
+  await expect(page.getByText("Raw diagnostic").first()).toBeVisible();
+  await page.locator("#warningsDialog [data-close]").click();
   const result = await page.evaluate(async () => {
     const api = async (path) => (await fetch(`api/v1/${path}`)).json();
     const all = await api("summary"), fast = await api("summary?mode=fast"), regular = await api("summary?mode=regular"), unknown = await api("summary?mode=unknown");
@@ -133,7 +143,7 @@ test("synthetic demo supports minute ranges with matching summary and daily tota
 });
 
 test("synthetic catalog supports GPT-6 aliases and Fast estimates", async ({ page }) => {
-  await page.goto(`${baseURL}?lang=en`, { waitUntil: "networkidle" });
+  await page.goto(`${baseURL}?lang=en&scenario=diagnostics`, { waitUntil: "networkidle" });
   await page.locator("#pricingButton").click();
   await page.locator(".catalog-disclosure summary").click();
   const card = page.locator('[data-pricing-model="codex-auto-review"]');
