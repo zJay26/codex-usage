@@ -2,9 +2,7 @@
 
 <img src="docs/branding/icon.png" width="112" height="112" alt="Codex Usage 图标：青色用量柱状图与铜色 Z">
 
-# Codex Usage
-
-by [zJay](https://github.com/zJay26)
+# Codex Usage <sub><sub><sup>by [zJay](https://github.com/zJay26)</sup></sub></sub>
 
 **让 Codex 用量一目了然。**
 
