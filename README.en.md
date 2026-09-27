@@ -1,6 +1,10 @@
 <div align="center">
 
-# codex-usage
+<img src="docs/branding/icon.png" width="112" height="112" alt="Codex Usage icon: teal usage bars with a copper Z">
+
+# Codex Usage
+
+by [zJay](https://github.com/zJay26)
 
 **Your Codex usage, clear at a glance.**
 

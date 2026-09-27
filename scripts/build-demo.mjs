@@ -9,17 +9,17 @@ const outputRoot = path.resolve(process.argv[2] || path.join(repoRoot, "dist", "
 await rm(outputRoot, { recursive: true, force: true });
 await mkdir(outputRoot, { recursive: true });
 
-for (const file of ["styles.css", "i18n.js", "app.js", "updates.js"]) {
+const assets = ["styles.css", "i18n.js", "app.js", "updates.js", "icon.svg", "favicon-32.png", "apple-touch-icon.png"];
+for (const file of assets) {
   await copyFile(path.join(sourceRoot, file), path.join(outputRoot, file));
 }
 await copyFile(path.join(repoRoot, "scripts", "demo-api.js"), path.join(outputRoot, "demo-api.js"));
 
 let html = await readFile(path.join(sourceRoot, "index.html"), "utf8");
+for (const file of assets) {
+  html = html.replaceAll(`"/${file}"`, `"./${file}"`);
+}
 html = html
-  .replace('href="/styles.css"', 'href="./styles.css"')
-  .replace('src="/i18n.js"', 'src="./i18n.js"')
-  .replace('src="/app.js"', 'src="./app.js"')
-  .replace('src="/updates.js"', 'src="./updates.js"')
   .replace('  <script src="./i18n.js"></script>', '  <script src="./demo-api.js"></script>\n  <script src="./i18n.js"></script>');
 await writeFile(path.join(outputRoot, "index.html"), html);
 await writeFile(path.join(outputRoot, ".nojekyll"), "");

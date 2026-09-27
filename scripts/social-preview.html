@@ -12,9 +12,9 @@
     main::before { content:""; position:absolute; inset:16px; border:1px solid var(--line); border-radius:24px; pointer-events:none; }
     .copy { position:relative; z-index:1; display:flex; flex-direction:column; min-width:0; }
     .brand { display:flex; align-items:center; gap:14px; font-weight:760; font-size:20px; letter-spacing:-.02em; }
-    .mark { width:42px; height:42px; display:flex; align-items:end; justify-content:center; gap:4px; padding:10px 8px; border:1px solid #aebbb6; border-radius:12px; background:var(--paper); }
-    .mark i { width:4px; border-radius:3px; background:var(--teal); }
-    .mark i:nth-child(1){height:9px;opacity:.45}.mark i:nth-child(2){height:20px;opacity:.75}.mark i:nth-child(3){height:15px}.mark i:nth-child(4){height:25px;background:var(--copper)}
+    .mark { display:block; flex:none; width:64px; height:64px; }
+    .brand-copy { display:grid; gap:4px; }
+    .brand-copy small { color:var(--muted); font-size:13px; font-weight:500; letter-spacing:.01em; }
     .kicker { margin:54px 0 16px; color:var(--teal); font:700 13px/1 ui-monospace,SFMono-Regular,Consolas,monospace; letter-spacing:.14em; }
     h1 { max-width:660px; margin:0; font-size:51px; line-height:1.01; letter-spacing:-.052em; text-wrap:balance; }
     .zh { margin:17px 0 0; color:var(--muted); font-size:22px; font-weight:650; letter-spacing:-.025em; }
@@ -43,7 +43,7 @@
 <body>
   <main>
     <section class="copy">
-      <div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>codex-usage</div>
+      <div class="brand"><img class="mark" src="../internal/web/static/icon.svg" width="64" height="64" alt=""><span class="brand-copy"><strong>Codex Usage</strong><small>by zJay</small></span></div>
       <p class="kicker">LOCAL-FIRST · CODEX USAGE ANALYTICS</p>
       <h1>Every token.<br>Every task.<br>One clear view.</h1>
       <p class="zh">让 Codex 用量一目了然</p>

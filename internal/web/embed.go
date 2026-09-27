@@ -18,18 +18,11 @@ func Handler() http.Handler {
 	sub, _ := fs.Sub(assets, "static")
 	files := http.FileServer(http.FS(sub))
 	index, _ := fs.ReadFile(sub, "index.html")
-	styles, _ := fs.ReadFile(sub, "styles.css")
-	i18n, _ := fs.ReadFile(sub, "i18n.js")
-	script, _ := fs.ReadFile(sub, "app.js")
-	updates, _ := fs.ReadFile(sub, "updates.js")
-	index = bytes.ReplaceAll(index, []byte(`src="/updates.js"`),
-		[]byte(`src="/updates.js?v=`+assetVersion(updates)+`"`))
-	index = bytes.ReplaceAll(index, []byte(`href="/styles.css"`),
-		[]byte(`href="/styles.css?v=`+assetVersion(styles)+`"`))
-	index = bytes.ReplaceAll(index, []byte(`src="/app.js"`),
-		[]byte(`src="/app.js?v=`+assetVersion(script)+`"`))
-	index = bytes.ReplaceAll(index, []byte(`src="/i18n.js"`),
-		[]byte(`src="/i18n.js?v=`+assetVersion(i18n)+`"`))
+	for _, name := range []string{"styles.css", "i18n.js", "app.js", "updates.js", "icon.svg", "favicon-32.png", "apple-touch-icon.png"} {
+		content, _ := fs.ReadFile(sub, name)
+		index = bytes.ReplaceAll(index, []byte(`"/`+name+`"`),
+			[]byte(`"/`+name+`?v=`+assetVersion(content)+`"`))
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		if path == "" {
@@ -44,7 +37,7 @@ func Handler() http.Handler {
 			return
 		} else {
 			// The index points at content-derived URLs, so a binary upgrade always
-			// receives matching HTML/CSS/JS even when Edge retains an older asset.
+			// receives matching scripts, styles and icons even when Edge caches assets.
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
 		r2 := r.Clone(r.Context())
