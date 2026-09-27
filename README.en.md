@@ -2,7 +2,7 @@
 
 <img src="docs/branding/icon.png" width="112" height="112" alt="Codex Usage icon: teal usage bars with a copper Z">
 
-# Codex Usage <sub><sub><sup>by [zJay](https://github.com/zJay26)</sup></sub></sub>
+<h1 align="center">Codex Usage<sup><sub><sub><div align="right">by <a href="https://github.com/zJay26">zJay</a></div></sub></sub></sup></h1>
 
 **Your Codex usage, clear at a glance.**
 
