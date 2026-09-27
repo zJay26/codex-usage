@@ -22,7 +22,8 @@ are committed so normal Go builds do not require a browser. The local server
 versions icon URLs by content; the static demo rewrites them to relative paths.
 
 The Chinese and English repository READMEs use `icon.png` at 112px, followed by
-**Codex Usage** and a linked **by zJay** signature. The repository slug, executable
+**Codex Usage** and a small, plain-text **by zJay** signature at the lower right
+of the title area. The repository slug, executable
 name and installation paths remain `codex-usage`.
 
 Run `npm run capture:media` after visual changes to refresh the bilingual tours,
