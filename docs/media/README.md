@@ -24,3 +24,23 @@ Outputs:
 The tour covers overview ranges, minute-precision queries, hourly drill-down, daily calendar, projects, expandable task trees, Session search, Fast filtering, JSON / CSV export, model prices, themes, and languages. Pointer movement takes 160–340 ms with easing; most results remain visible for 350–850 ms. There is no global time compression and no truncated tail. Capture fixes the clock and timezone for reproducible dates, waits for pricing before recording, and checks the entire tour for visible warning/error banners, JavaScript errors, and external requests.
 
 The export dialog is demonstrated without downloading files. Software installation and updates are documented in the project README; the synthetic demo does not install software.
+
+## Promo film
+
+`npm run capture:promo` renders a 30-second promotional film from the same synthetic demo, in Chinese and English, landscape and vertical:
+
+- `codex-usage-promo-zh.mp4` and `codex-usage-promo-en.mp4`: 1920 × 1080, 30 fps, H.264 + AAC.
+- `codex-usage-promo-zh-vertical.mp4` and `codex-usage-promo-en-vertical.mp4`: 1080 × 1920 for short-video platforms.
+- `codex-usage-promo-poster.jpg` and `codex-usage-promo-poster-en.jpg`: landscape posters with a play badge.
+
+[![Codex Usage promo poster](codex-usage-promo-poster-en.jpg)](codex-usage-promo-en.mp4)
+
+The pipeline has three steps, all offline:
+
+1. `scripts/promo/assets.mjs` captures 2× Dashboard stills of each feature and the rectangles the camera focuses on. The portrait cut uses a 1000 × 1150 Dashboard viewport so the panel fills the frame. The demo notice banner is left out of the stills; the film carries its own "synthetic demo data" label instead.
+2. `scripts/promo/promo.html`, `promo.css`, and `promo.js` compose the scenes. Every frame is a pure function of time, so `scripts/capture-promo.mjs` seeks frame by frame and pipes lossless screenshots into FFmpeg. There is no real-time recording, dropped frames, or timing drift.
+3. `scripts/promo/music.mjs` synthesizes the soundtrack (pads, bass, drums, plucks, bells, and whooshes) in Node, then normalizes it to −16 LUFS with FFmpeg's two-pass `loudnorm`. The soundtrack is generated, so it carries no licensing obligations.
+
+`scripts/promo/timeline.json` is the single source of scene timing for both picture and sound. `MEDIA_LOCALE=zh-CN|en` and `PROMO_FORMAT=landscape|vertical` render a single version. `PROMO_PREVIEW=1` writes only the review keyframes and posters. Rendering checks each MP4's resolution, frame count, duration, audio stream, and size. Review stills and `render.json` are written to `../../dist/promo-review/`.
+
+The copy uses system fonts, the same as the Dashboard. Segoe UI Variable and Microsoft YaHei were used for the committed renders, so other systems may show slightly different typography.

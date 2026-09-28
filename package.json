@@ -6,6 +6,7 @@
     "build:icons": "node scripts/export-icons.mjs",
     "build:demo": "node scripts/build-demo.mjs dist/pages",
     "capture:media": "node scripts/capture-media.mjs",
+    "capture:promo": "node scripts/capture-promo.mjs",
     "pretest": "npm run build:demo",
     "test": "playwright test tests/dashboard.spec.mjs tests/demo.spec.mjs",
     "pretest:demo": "npm run build:demo",

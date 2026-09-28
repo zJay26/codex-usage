@@ -21,7 +21,7 @@
 
 概览 → 分钟级时间查询 → 小时下钻 → 每日月历 → 项目与任务树 → 搜索与 Fast 筛选 → JSON / CSV 导出 → 模型定价 → 明暗主题与中英切换。
 
-[亲手试用在线 Demo](https://zjay26.github.io/codex-usage/?lang=zh-CN) · [高清演示视频](docs/media/codex-usage-demo-zh.mp4)
+[亲手试用在线 Demo](https://zjay26.github.io/codex-usage/?lang=zh-CN) · [高清演示视频](docs/media/codex-usage-demo-zh.mp4) · [30 秒宣传片](docs/media/codex-usage-promo-zh.mp4)（[竖屏版](docs/media/codex-usage-promo-zh-vertical.mp4)）
 
 > 演示使用完整定价、无异常记录的合成数据，直接录制当前 Dashboard。在线 Demo 不读取你的文件、不设 Cookie、无埋点或外部请求。
 
@@ -320,7 +320,7 @@ npm test
 
 `npm test` 默认在临时目录构建并启动真实 Go 二进制；设置 `CODEX_USAGE_BIN` 可以复用已有构建产物。
 
-README 动图、视频和截图可通过 `npm run capture:media` 重新生成；依赖、演示场景与录制检查见 [媒体说明](docs/media/README.md)。
+README 动图、视频和截图可通过 `npm run capture:media` 重新生成，30 秒宣传片可通过 `npm run capture:promo` 重新生成；依赖、演示场景与录制检查见 [媒体说明](docs/media/README.md)。
 
 当前 [CI](https://github.com/zJay26/codex-usage/actions/workflows/ci.yml) 覆盖 Windows、Linux、macOS Apple Silicon / Intel 的 Go 测试与 vet、Linux 并发检查、六目标交叉构建及 Dashboard 测试；两个 macOS 架构还各执行三轮安装、卸载和重装。Release 发布也要求原生 macOS 检查通过。
 

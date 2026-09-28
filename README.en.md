@@ -21,7 +21,7 @@
 
 Overview → minute-precision time range → hourly drill-down → calendar → projects and task trees → search and Fast filters → JSON / CSV export → model pricing → themes and languages.
 
-[Try the interactive demo](https://zjay26.github.io/codex-usage/?lang=en) · [High-resolution video](docs/media/codex-usage-demo-en.mp4)
+[Try the interactive demo](https://zjay26.github.io/codex-usage/?lang=en) · [High-resolution video](docs/media/codex-usage-demo-en.mp4) · [30-second promo](docs/media/codex-usage-promo-en.mp4) ([vertical](docs/media/codex-usage-promo-en-vertical.mp4))
 
 > Recorded directly from the current Dashboard with healthy, fully priced synthetic data. The online demo does not read your files, set cookies, run analytics, or make external requests.
 
@@ -318,7 +318,7 @@ npm test
 
 By default, `npm test` builds and launches a real Go binary in a temporary directory. Set `CODEX_USAGE_BIN` to reuse an existing build.
 
-Regenerate README animations, videos, and screenshots with `npm run capture:media`; see [media notes](docs/media/README.md) for dependencies, scenarios, and recording checks.
+Regenerate README animations, videos, and screenshots with `npm run capture:media`, and the 30-second promo with `npm run capture:promo`; see [media notes](docs/media/README.md) for dependencies, scenarios, and recording checks.
 
 Current [CI](https://github.com/zJay26/codex-usage/actions/workflows/ci.yml) covers Go tests and vet on Windows, Linux, macOS Apple Silicon / Intel, Linux concurrency checks, six-target cross-builds, and Dashboard tests. Each macOS architecture also runs three install/uninstall/reinstall cycles. Release publication requires the native macOS checks to pass.
 

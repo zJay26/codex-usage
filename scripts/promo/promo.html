@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="promo.css">
+</head>
+<body>
+  <main id="stage">
+    <div class="bg bg-dark"><i class="glow glow-a"></i><i class="glow glow-b"></i></div>
+    <div class="bg bg-light"><i class="grid"></i><i class="glow glow-a"></i><i class="glow glow-b"></i></div>
+
+    <section id="hook" class="layer">
+      <div class="hook-bars"></div>
+      <div class="hook-copy">
+        <p class="kicker" data-copy="hook.kicker"></p>
+        <h1 class="hook-title" data-lines="hook.title"></h1>
+        <p class="hook-counter"><b id="hookCount">0</b><span data-copy="hook.unit"></span></p>
+      </div>
+    </section>
+
+    <section id="brand" class="layer">
+      <div class="brand-lockup">
+        <div class="brand-icon icon-slot"></div>
+        <div class="brand-words">
+          <h1>Codex Usage</h1>
+          <p class="byline">by zJay</p>
+        </div>
+      </div>
+      <p class="brand-tagline" data-copy="brand.tagline"></p>
+    </section>
+
+    <header id="corner" class="layer"><span class="icon-slot"></span><strong>Codex Usage</strong></header>
+
+    <div id="copy" class="layer"></div>
+
+    <div id="panel">
+      <div class="chrome"><i></i><i></i><i></i><span class="url">127.0.0.1:43189</span></div>
+      <div class="viewport"><div id="content"></div></div>
+    </div>
+
+    <div id="cards" class="layer"></div>
+
+    <div id="phone"><div class="phone-screen"><img alt=""></div></div>
+
+    <section id="privacy" class="layer">
+      <div class="rings"><i></i><i></i><i></i><i></i></div>
+      <div class="privacy-copy">
+        <div class="lock"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="9" y="21" width="30" height="21" rx="5"/><path d="M15 21v-6a9 9 0 0 1 18 0v6" fill="none"/><circle cx="24" cy="31" r="3"/></svg></div>
+        <p class="kicker" data-copy="privacy.kicker"></p>
+        <h1 data-lines="privacy.title"></h1>
+        <ul class="privacy-chips"></ul>
+      </div>
+    </section>
+
+    <section id="cta" class="layer">
+      <div class="cta-lockup">
+        <div class="cta-icon icon-slot"></div>
+        <div>
+          <h1>Codex Usage</h1>
+          <p class="cta-tagline" data-copy="brand.tagline"></p>
+        </div>
+      </div>
+      <div class="terminal"><span class="prompt">$</span> <span id="typed"></span><i class="caret"></i></div>
+      <ul class="cta-links">
+        <li><b>GitHub</b><span>github.com/zJay26/codex-usage</span></li>
+        <li><b data-copy="cta.demo"></b><span>zjay26.github.io/codex-usage</span></li>
+      </ul>
+      <p class="cta-meta" data-copy="cta.meta"></p>
+    </section>
+
+    <p id="badge" class="layer" data-copy="badge"></p>
+    <div id="play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg><span data-copy="play"></span></div>
+  </main>
+  <script src="promo.js"></script>
+</body>
+</html>
