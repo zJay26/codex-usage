@@ -27,7 +27,7 @@ The export dialog is demonstrated without downloading files. Software installati
 
 ## Promo film
 
-`npm run capture:promo` renders a 30-second promotional film from the same synthetic demo, in Chinese and English, landscape and vertical:
+`npm run capture:promo` renders a 59-second promotional film in Chinese and English, in landscape and vertical cuts:
 
 - `codex-usage-promo-zh.mp4` and `codex-usage-promo-en.mp4`: 1920 × 1080, 30 fps, H.264 + AAC.
 - `codex-usage-promo-zh-vertical.mp4` and `codex-usage-promo-en-vertical.mp4`: 1080 × 1920 for short-video platforms.
@@ -35,12 +35,44 @@ The export dialog is demonstrated without downloading files. Software installati
 
 [![Codex Usage promo poster](codex-usage-promo-poster-en.jpg)](codex-usage-promo-en.mp4)
 
+The film opens with a question and the brand, then shows ten features, one idea per shot:
+
+1. Totals and cost
+2. The last 30 days of daily usage
+3. Hourly usage
+4. A minute-precision range since the last reset
+5. The calendar with its Standard / Fast split
+6. Breakdowns by model and project
+7. Session search
+8. The task tree
+9. Export, live usage updates, and software updates
+10. Theme, language, and mobile layout
+
+It closes with the privacy promise and install instructions.
+
+Each shot uses the same devices. The camera settles on one area, the rest of the page dims, a label names what matters, and a cursor performs the click that leads to the next still.
+
+The film uses its own synthetic ledger, `?scenario=promo` in `scripts/demo-api.js`, with heavier, more realistic use than the default demo:
+
+- About 2.38B tokens and $3,100 of API-equivalent cost over 30 days.
+- A weekday rhythm, a release-day spike, and idle Sundays.
+- Seven projects and task-like Session titles in the viewer's language.
+- Subagent trees and a mock "update available" state.
+
+The default online demo and its tests are unchanged.
+
 The pipeline has three steps, all offline:
 
-1. `scripts/promo/assets.mjs` captures 2× Dashboard stills of each feature and the rectangles the camera focuses on. The portrait cut uses a 1000 × 1150 Dashboard viewport so the panel fills the frame. The demo notice banner is left out of the stills; the film carries its own "synthetic demo data" label instead.
-2. `scripts/promo/promo.html`, `promo.css`, and `promo.js` compose the scenes. Every frame is a pure function of time, so `scripts/capture-promo.mjs` seeks frame by frame and pipes lossless screenshots into FFmpeg. There is no real-time recording, dropped frames, or timing drift.
-3. `scripts/promo/music.mjs` synthesizes the soundtrack (pads, bass, drums, plucks, bells, and whooshes) in Node, then normalizes it to −16 LUFS with FFmpeg's two-pass `loudnorm`. The soundtrack is generated, so it carries no licensing obligations.
+1. `scripts/promo/assets.mjs` captures 2× Dashboard stills for every beat, together with the rectangles that the camera, spotlight, labels, and cursor are anchored to. The portrait cut uses a 1000 × 1150 Dashboard viewport so the panel fills the frame. The demo notice banner is left out of the stills; the film carries its own "synthetic demo data" label instead.
+2. `scripts/promo/promo.html`, `promo.css`, and `promo.js` compose the scenes from a beat sheet. Every frame is a pure function of time, so `scripts/capture-promo.mjs` seeks frame by frame and pipes lossless screenshots into FFmpeg. There is no real-time recording, dropped frames, or timing drift.
+3. `scripts/promo/music.mjs` synthesizes the soundtrack in Node (pads, bass, drums, plucks, bells, and whooshes), then normalizes it to −16 LUFS with FFmpeg's two-pass `loudnorm`. The soundtrack is generated, so it carries no licensing obligations.
 
-`scripts/promo/timeline.json` is the single source of scene timing for both picture and sound. `MEDIA_LOCALE=zh-CN|en` and `PROMO_FORMAT=landscape|vertical` render a single version. `PROMO_PREVIEW=1` writes only the review keyframes and posters. Rendering checks each MP4's resolution, frame count, duration, audio stream, and size. Review stills and `render.json` are written to `../../dist/promo-review/`.
+`scripts/promo/timeline.json` is the single source of scene timing for both picture and sound. Several environment variables help when rendering or iterating:
+
+- `MEDIA_LOCALE=zh-CN|en` and `PROMO_FORMAT=landscape|vertical` render a single version.
+- `PROMO_PREVIEW=1` writes only one review still per second, plus the posters.
+- `PROMO_ASSETS=<dir>` caches the captured stills between runs.
+
+Rendering checks each MP4's resolution, frame count, duration, audio stream, and size. Review stills and `render.json` are written to `../../dist/promo-review/`.
 
 The copy uses system fonts, the same as the Dashboard. Segoe UI Variable and Microsoft YaHei were used for the committed renders, so other systems may show slightly different typography.

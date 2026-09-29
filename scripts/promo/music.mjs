@@ -31,7 +31,9 @@ export async function renderMusic(timeline, output, workDir) {
   const length = Math.round(timeline.duration * rate);
   const beat = 60 / timeline.bpm;
   const scene = Object.fromEntries(timeline.scenes.map(s => [s.id, s]));
-  const grooveStart = scene.overview.start, grooveEnd = scene.privacy.start, end = scene.cta.start;
+  // The groove runs through the feature tour: from the first feature until privacy.
+  const features = timeline.scenes.slice(2, timeline.scenes.findIndex(s => s.id === "privacy"));
+  const grooveStart = features[0].start, grooveEnd = scene.privacy.start, end = scene.cta.start;
   const cuts = timeline.scenes.slice(2, -1).map(s => s.start);
 
   const dry = [new Float32Array(length), new Float32Array(length)];
@@ -96,7 +98,7 @@ export async function renderMusic(timeline, output, workDir) {
 
   // Hi-hats on the off-beats once the product tour is moving.
   const hatNoise = noise(7);
-  for (let s = scene.time.start + beat / 2; s < grooveEnd; s += beat) {
+  for (let s = features[1].start + beat / 2; s < grooveEnd; s += beat) {
     let prev = 0;
     add(dry, s, lt => { const n = hatNoise(); const hp = n - prev; prev = n; return hp * Math.exp(-lt / .035) * .05; }, .12, .35);
   }
@@ -115,7 +117,7 @@ export async function renderMusic(timeline, output, workDir) {
     const f = midi(note);
     return (Math.sin(2 * Math.PI * f * lt) * Math.exp(-lt / 1.4) + .45 * Math.sin(2 * Math.PI * f * 2.76 * lt) * Math.exp(-lt / .45) + .2 * Math.sin(2 * Math.PI * f * 5.4 * lt) * Math.exp(-lt / .18)) * Math.min(1, lt / .003) * gain;
   }, 3.2, 0, 1.2);
-  [72, 76, 79, 83].forEach((note, i) => bell(scene.brand.start + .15 + i * .09, note, .06));
+  [72, 76, 79, 83].forEach((note, i) => bell(scene.brand.start + .1 + i * .07, note, .06));
   [60, 67, 72, 76, 79].forEach((note, i) => bell(end + i * .06, note, .055));
 
   // Counter ticks during the hook, accelerating with the numbers.
@@ -140,7 +142,7 @@ export async function renderMusic(timeline, output, workDir) {
     }, pre + post, 0, .6);
   };
   whoosh(scene.brand.start, 2.0, .35, .12, 11);
-  cuts.forEach((cut, i) => whoosh(cut, .45, .3, .07, 20 + i));
+  cuts.forEach((cut, i) => whoosh(cut, .45, .3, .05, 20 + i));
   whoosh(end, 1.4, .4, .09, 99);
 
   // Send bus: ping-pong delay followed by a light comb reverb.
