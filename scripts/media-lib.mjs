@@ -54,15 +54,15 @@ export async function startDemoServer() {
   return { baseURL, stop };
 }
 
-export async function openDemo(context, baseURL, locale) {
+export async function openDemo(context, baseURL, locale, { query = "", time = fixedTime } = {}) {
   const page = await context.newPage();
-  await page.clock.setFixedTime(fixedTime);
+  await page.clock.setFixedTime(time);
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   page.on("request", request => {
     if (new URL(request.url()).origin !== new URL(baseURL).origin) errors.push(`External request: ${request.url()}`);
   });
-  await page.goto(`${baseURL}?lang=${locale}`, { waitUntil: "networkidle" });
+  await page.goto(`${baseURL}?lang=${locale}${query}`, { waitUntil: "networkidle" });
   await expect(page.locator("#overviewTotal")).not.toHaveText("—");
   await expect(page.locator("#overviewCoverage")).toContainText("100");
   await expect(page.locator("#coverageBanner")).toBeHidden();

@@ -22,15 +22,17 @@ const sizes = { landscape: { width: 1920, height: 1080 }, vertical: { width: 108
 const stillViewports = { landscape: { width: 1440, height: 900 }, vertical: { width: 1000, height: 1150 } };
 const frameCount = Math.round(timeline.duration * timeline.fps);
 const tempDir = await mkdtemp(path.join(tmpdir(), "codex-usage-promo-"));
-const assetsDir = path.join(tempDir, "assets");
+// PROMO_ASSETS keeps captured Dashboard stills between runs while iterating on the composition.
+const assetsDir = process.env.PROMO_ASSETS ? path.resolve(process.env.PROMO_ASSETS) : path.join(tempDir, "assets");
 
 function outputName(locale, format) {
   return `codex-usage-promo-${locale === "en" ? "en" : "zh"}${format === "vertical" ? "-vertical" : ""}.mp4`;
 }
 
-// One review still per scene (its settled middle) plus the poster time.
+// One review still per second, named after its scene, plus the poster time.
 function reviewTimes() {
-  const times = timeline.scenes.map(s => ({ name: s.id, t: s.id === "cta" ? s.end - .2 : s.start + (s.end - s.start) * .62 }));
+  const times = [];
+  for (let t = .5; t < timeline.duration; t += 1) times.push({ name: timeline.scenes.findLast(s => s.start <= t).id, t });
   return [...times, { name: "poster", t: timeline.poster }];
 }
 
@@ -112,7 +114,7 @@ async function verify(file, format) {
     frames: Number(video.nb_read_frames) === frameCount,
     duration: Math.abs(Number(probe.format.duration) - timeline.duration) < .1,
     audio: audio?.codec_name === "aac",
-    size: size > 200_000 && size < 16_000_000
+    size: size > 200_000 && size < 30_000_000
   };
   const failed = Object.entries(checks).filter(([, ok]) => !ok).map(([name]) => name);
   if (failed.length) throw new Error(`${file} failed checks: ${failed.join(", ")} ${JSON.stringify(probe)}`);
@@ -130,7 +132,8 @@ try {
       // Both languages are captured so the interface scene can show the language switch.
       for (const locale of ["zh-CN", "en"]) for (const format of formats) {
         const dir = path.join(assetsDir, `${locale}-${format}`);
-        const manifest = await captureAssets(browser, server.baseURL, locale, dir, stillViewports[format]);
+        const cached = process.env.PROMO_ASSETS ? await readFile(path.join(dir, "manifest.json"), "utf8").then(JSON.parse, () => null) : null;
+        const manifest = cached || await captureAssets(browser, server.baseURL, locale, dir, stillViewports[format]);
         manifests[`${locale}-${format}`] = { ...manifest, base: pathToFileURL(dir).href + "/" };
         console.log(`${locale} ${format}: captured ${Object.keys(manifest.shots).length} Dashboard stills`);
       }
