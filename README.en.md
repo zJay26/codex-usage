@@ -17,6 +17,8 @@
 
 </div>
 
+https://github.com/user-attachments/assets/a24e1a43-1948-4bca-9958-10d9975b570c
+
 ![Complete Codex Usage tour: precise time ranges, hourly trends, calendar, task trees, search, Fast filters, exports, pricing, and themes](docs/media/codex-usage-demo-en.gif)
 
 Overview → minute-precision time range → hourly drill-down → calendar → projects and task trees → search and Fast filters → JSON / CSV export → model pricing → themes and languages.
