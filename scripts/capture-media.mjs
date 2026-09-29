@@ -1,82 +1,23 @@
 import { chromium, expect } from "@playwright/test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { once } from "node:events";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { spawn, spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { assertSynthetic, openDemo, repoRoot, run, startDemoServer } from "./media-lib.mjs";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const mediaDir = path.join(repoRoot, "docs", "media");
 const imagesDir = path.join(repoRoot, "docs", "images");
 const reviewDir = path.join(repoRoot, "dist", "media-review");
 const tempDir = await mkdtemp(path.join(tmpdir(), "codex-usage-media-"));
 const viewport = { width: 1440, height: 1000 };
-const fixedTime = new Date("2026-09-23T16:30:00+08:00");
-const port = await new Promise((resolve, reject) => {
-  const probe = createServer();
-  probe.once("error", reject);
-  probe.listen(0, "127.0.0.1", () => {
-    const { port } = probe.address();
-    probe.close(error => error ? reject(error) : resolve(port));
-  });
-});
-const baseURL = `http://127.0.0.1:${port}/codex-usage/`;
-
-function run(command, args, capture = false) {
-  const result = spawnSync(command, args, { cwd: repoRoot, stdio: capture ? "pipe" : "inherit", encoding: "utf8", windowsHide: true });
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`${command} failed: ${result.stderr || result.status}`);
-  return result.stdout;
-}
-
-function assertSynthetic(text) {
-  for (const pattern of [/[A-Z]:\\Users\\/i, /\/home\/[a-z0-9._-]+\//i, /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i]) {
-    if (pattern.test(text)) throw new Error(`Sensitive-looking value matched ${pattern}`);
-  }
-}
-
-async function waitForServer() {
-  const deadline = Date.now() + 10_000;
-  while (Date.now() < deadline) {
-    try { if ((await fetch(baseURL)).ok) return; } catch {}
-    await delay(100);
-  }
-  throw new Error("media demo server did not become ready");
-}
-
-async function openDemo(context, locale) {
-  const page = await context.newPage();
-  await page.clock.setFixedTime(fixedTime);
-  const errors = [];
-  page.on("pageerror", error => errors.push(error.message));
-  page.on("request", request => {
-    if (new URL(request.url()).origin !== new URL(baseURL).origin) errors.push(`External request: ${request.url()}`);
-  });
-  await page.goto(`${baseURL}?lang=${locale}`, { waitUntil: "networkidle" });
-  await expect(page.locator("#overviewTotal")).not.toHaveText("—");
-  await expect(page.locator("#overviewCoverage")).toContainText("100");
-  await expect(page.locator("#coverageBanner")).toBeHidden();
-  await page.evaluate(() => {
-    window.mediaWarnings = [];
-    // Observe transient errors between chapters as well as settled screens.
-    setInterval(() => {
-      for (const selector of ["#coverageBanner", "#toast.error", "#customRangeError", "#updateError"]) {
-        const node = document.querySelector(selector);
-        if (node?.checkVisibility() && node.textContent.trim()) window.mediaWarnings.push(node.textContent.trim());
-      }
-    }, 40);
-  });
-  return { page, errors };
-}
+let baseURL;
 
 async function recordDemo(browser, locale) {
   const chapterDir = path.join(reviewDir, locale);
   await mkdir(chapterDir, { recursive: true });
   const context = await browser.newContext({ viewport, deviceScaleFactor: 1, colorScheme: "light", timezoneId: "Asia/Shanghai", recordVideo: { dir: tempDir, size: viewport } });
-  const { page, errors } = await openDemo(context, locale);
+  const { page, errors } = await openDemo(context, baseURL, locale);
   const video = page.video();
   // A recording-only pointer; product layout and content are untouched.
   await page.evaluate(() => {
@@ -232,11 +173,10 @@ async function recordDemo(browser, locale) {
   }
 }
 
-run(process.execPath, ["scripts/build-demo.mjs", "dist/pages"]);
 for (const directory of [mediaDir, imagesDir, reviewDir]) await mkdir(directory, { recursive: true });
-const server = spawn(process.execPath, ["scripts/serve-static.mjs", "dist/pages", String(port), "codex-usage"], { cwd: repoRoot, stdio: "ignore", windowsHide: true });
+const server = await startDemoServer();
+baseURL = server.baseURL;
 try {
-  await waitForServer();
   const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {}) });
   try {
     const socialContext = await browser.newContext({ viewport: { width: 1280, height: 640 }, deviceScaleFactor: 1 });
@@ -246,7 +186,7 @@ try {
     await social.screenshot({ path: path.join(mediaDir, "social-preview.png") });
     await socialContext.close();
     const desktopContext = await browser.newContext({ viewport, colorScheme: "light", timezoneId: "Asia/Shanghai", deviceScaleFactor: 1 });
-    const { page: desktop } = await openDemo(desktopContext, "zh-CN");
+    const { page: desktop } = await openDemo(desktopContext, baseURL, "zh-CN");
     assertSynthetic(await desktop.locator("body").innerText());
     await desktop.screenshot({ path: path.join(imagesDir, "dashboard.png"), fullPage: true });
     await desktop.setViewportSize({ width: 390, height: 844 });
@@ -258,11 +198,7 @@ try {
   }
   console.log(`Generated media in ${mediaDir}; chapter screenshots and audit in ${reviewDir}`);
 } finally {
-  if (server.exitCode === null && server.signalCode === null) {
-    const exited = once(server, "exit");
-    server.kill();
-    await Promise.race([exited, delay(5_000)]);
-  }
+  await server.stop();
   const tempRoot = path.resolve(tmpdir()) + path.sep;
   if (!path.resolve(tempDir).startsWith(tempRoot) || !path.basename(tempDir).startsWith("codex-usage-media-")) throw new Error("Unexpected capture cleanup path");
   await rm(tempDir, { recursive: true, force: true });

@@ -8,7 +8,7 @@
 
 *A complete, thoughtfully built local dashboard. From each computer to every task.*
 
-[Live Demo](https://zjay26.github.io/codex-usage/?lang=en) · [Windows x64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-windows-amd64.exe) · [Linux x64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-amd64) · [macOS Apple Silicon](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-arm64) · [All downloads](#install-directly) · English / [简体中文](README.md)
+[Live Demo](https://zjay26.github.io/codex-usage/?lang=en) · [Windows x64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-windows-amd64.exe) · [Linux x64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-amd64) · [macOS Apple Silicon](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-arm64) · [All downloads](#quick-start) · English / [简体中文](README.md)
 
 [![CI](https://github.com/zJay26/codex-usage/actions/workflows/ci.yml/badge.svg)](https://github.com/zJay26/codex-usage/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/zJay26/codex-usage?display_name=tag)](https://github.com/zJay26/codex-usage/releases/latest)
@@ -21,9 +21,67 @@
 
 Overview → minute-precision time range → hourly drill-down → calendar → projects and task trees → search and Fast filters → JSON / CSV export → model pricing → themes and languages.
 
-[Try the interactive demo](https://zjay26.github.io/codex-usage/?lang=en) · [High-resolution video](docs/media/codex-usage-demo-en.mp4)
+[Try the interactive demo](https://zjay26.github.io/codex-usage/?lang=en) · [High-resolution video](docs/media/codex-usage-demo-en.mp4) · [30-second promo](docs/media/codex-usage-promo-en.mp4) ([vertical](docs/media/codex-usage-promo-en-vertical.mp4))
 
 > Recorded directly from the current Dashboard with healthy, fully priced synthetic data. The online demo does not read your files, set cookies, run analytics, or make external requests.
+
+## Quick start
+
+**Just two steps: download the program for your computer, then run `install` once.**
+
+It then organizes the Codex history already on your computer and keeps counting in the background. To check your usage later, open [http://127.0.0.1:43189](http://127.0.0.1:43189) in a browser. No database to set up, no account to create, and your data never leaves your computer.
+
+### Step 1: Pick your version and download
+
+Not sure which one you need? Match your computer to the table:
+
+| Your computer | Download |
+|---|---|
+| Windows (most PCs) | [Windows x64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-windows-amd64.exe) |
+| Windows ARM device (uncommon; Settings → System → About shows an ARM processor) | [Windows ARM64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-windows-arm64.exe) |
+| Mac with Apple silicon (M1 / M2 / M3 / M4, etc.) | [macOS Apple Silicon](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-arm64) |
+| Mac with an Intel chip (Apple menu → About This Mac says “Intel”) | [macOS Intel](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-amd64) |
+| Linux / WSL (most computers) | [Linux x64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-amd64) |
+| Linux / WSL ARM device | [Linux ARM64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-arm64) |
+
+### Step 2: Run install
+
+**Already downloaded it in your browser?** Open a terminal (PowerShell on Windows), go to the folder containing the file, and run `<file name> --lang en install`. On Windows, for example: `.\codex-usage-windows-amd64.exe --lang en install`. On Mac / Linux, first run `chmod +x <file name>` to make it executable, then `./<file name> --lang en install`.
+
+**Want the shortcut?** Copy the commands for your system below and paste them into a terminal; they download and install in one go.
+
+**Windows**: search for “PowerShell” in the Start menu, open it, and paste. No administrator privileges needed. For ARM64 devices, replace `amd64` with `arm64` in the URL:
+
+```powershell
+Invoke-WebRequest https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-windows-amd64.exe -OutFile codex-usage.exe
+.\codex-usage.exe --lang en install
+```
+
+**macOS**: open Terminal (search for it in Launchpad) and paste. No `sudo` needed. This is the Apple Silicon version; for Intel, replace `arm64` with `amd64` in the URL:
+
+```bash
+curl -fL https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-arm64 -o codex-usage
+chmod +x codex-usage
+./codex-usage --lang en install
+```
+
+Run this from a normal macOS graphical login session; the service then starts automatically at login. The binary is not Apple Developer-ID signed or notarized, so macOS may block it on first run; see [macOS installation](docs/macos.md) for opening and verification steps. In an SSH-only session, use `./codex-usage serve` to run in the foreground.
+
+**Linux / WSL**: open a terminal and paste. This is the x64 version; for ARM64 devices, replace `amd64` with `arm64` in the URL:
+
+```bash
+curl -fL https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-amd64 -o codex-usage
+chmod +x codex-usage
+./codex-usage --lang en install
+```
+
+Login startup uses `systemd --user` by default. If that is unavailable, the installer starts the program in the background and prints a warning; automatic startup then needs manual configuration.
+
+### Step 3: Open the Dashboard
+
+When installation finishes, open [http://127.0.0.1:43189](http://127.0.0.1:43189) in your browser (only your own computer can open this address). If the installer prints a different address, use that one.
+
+That's it: the program runs in the background, your history is organized, and new usage keeps updating automatically. From now on, just open that address to check.
 
 ## From the big picture to every task
 
@@ -32,73 +90,6 @@ Overview → minute-precision time range → hourly drill-down → calendar → 
 Install once to index existing history and keep new usage up to date. **Go from “How much did I use today?” to “What did these 90 minutes, this project, or this task tree consume?” in the same interface.** Regular / Fast breakdowns, minute-precision ranges, Session search, combined filters, API-equivalent costs, and exports are all included. English and Chinese, light and dark themes, display settings, and a mobile layout make it comfortable to check every day.
 
 One binary runs on Windows, Linux / WSL, or macOS, with no database service or central server to deploy. Statistics stay on the current computer; prompts, replies, and tool output are never stored, and `auth.json` is never read. Costs are estimates using bundled public API prices and Fast credit multipliers, not actual bills or account quotas.
-
-## Install directly
-
-This README covers stable **[v2.7.1](https://github.com/zJay26/codex-usage/releases/tag/v2.7.1)**; see the [release notes](docs/releases/v2.7.1.md) for changes and upgrade boundaries. Download links below always resolve to the latest stable release.
-
-| System | amd64 / x64 | arm64 |
-|---|---|---|
-| Windows | [x64 binary](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-windows-amd64.exe) | [ARM64 binary](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-windows-arm64.exe) |
-| Linux / WSL | [x64 binary](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-amd64) | [ARM64 binary](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-arm64) |
-| macOS | [Intel binary](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-amd64) | [Apple Silicon binary](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-arm64) |
-
-### Windows
-
-amd64 / x64, without administrator privileges; replace `amd64` with `arm64` in the download URL for ARM64 devices:
-
-```powershell
-Invoke-WebRequest https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-windows-amd64.exe -OutFile codex-usage.exe
-.\codex-usage.exe --lang en install
-```
-
-### Linux / WSL
-
-amd64 / x64; replace `amd64` with `arm64` in the download URL for ARM64 devices:
-
-```bash
-curl -fL https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-amd64 -o codex-usage
-chmod +x codex-usage
-./codex-usage --lang en install
-```
-
-Login startup uses `systemd --user` by default. If the user bus is unavailable, the installer attempts a detached start and prints a warning; automatic startup then needs manual configuration.
-
-### macOS
-
-Apple Silicon; replace `arm64` with `amd64` in the download URL for Intel:
-
-```bash
-curl -fL https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-arm64 -o codex-usage
-chmod +x codex-usage
-./codex-usage --lang en install
-```
-
-Install from a normal macOS graphical login session. A per-user LaunchAgent starts the service at login without `sudo`. Binaries are not Apple Developer-ID signed or notarized; see [macOS installation](docs/macos.md) for verification and opening instructions. In an SSH-only session, use `./codex-usage serve` to run in the foreground.
-
-### Verify and open the Dashboard
-
-Each Release includes [SHA256SUMS](https://github.com/zJay26/codex-usage/releases/latest/download/SHA256SUMS). Before executing the downloaded binary, you can calculate its hash with `Get-FileHash .\codex-usage.exe -Algorithm SHA256` on Windows, `sha256sum codex-usage` on Linux, or `shasum -a 256 codex-usage` on macOS. Compare it with the manifest entry for your system and architecture's full asset filename.
-
-The installer finds existing local usage and starts the background service. Open the Dashboard URL printed by installation, [http://127.0.0.1:43189](http://127.0.0.1:43189) by default. You can also run the installed binary to open the browser; commands for the default locations are:
-
-| System | Open the Dashboard |
-|---|---|
-| Windows PowerShell | `& "$env:LOCALAPPDATA\Programs\codex-usage\codex-usage.exe"` |
-| Linux / WSL | `"$HOME/.local/bin/codex-usage"` |
-| macOS | `"$HOME/Library/Application Support/codex-usage/bin/codex-usage"` |
-
-Installation does not modify `PATH`. If you set `CODEX_USAGE_HOME`, use the executable path printed by installation. On a headless Linux server, the program prints an SSH tunnel command; run it on your own computer before opening the Dashboard.
-
-### Upgrade an existing installation
-
-Starting with **v2.5.0**, the application checks GitHub for the latest stable release every six hours by default. Updates are optional: open **Software updates** in the footer to review release notes, disable automatic checks, or check manually. Only **Download and update** downloads the release, verifies SHA256, backs up the program and local statistics, and replaces and restarts the application. A startup failure triggers an attempt to restore the previous program and data. Backups remain under `.codex-usage-updates/run-*` in the state directory.
-
-**Installed v2.5.0 or later can update in the app; versions before v2.5.0 require a manual download and `install` first.** Portable and preview copies only offer version checks and the release page. Checks fetch version information from GitHub, downloads come from this project's Release assets, and neither uploads usage, paths, or conversations. Turning off automatic checks stops background update requests. Re-running `install` remains available for manual upgrades.
-
-**Software updates** lets you set the update download directory, open the folder, or copy its path. The default is `codex-usage` inside your user Downloads directory. Version folders retain the release binaries, and the UI shows the full path of the last download. Directory changes only affect future downloads; existing files stay in place and database backups remain in the local state directory.
-
-**v2.6.4 fixes missing compaction usage and retains the v2.6.3 mixed-counter fix.** Upgrading an older ledger to schema v11 preserves its statistics and flags them for review; incremental scans pause. Back up the state and verify source JSONL coverage, then select **Rescan → Approve and rebuild** or explicitly run `codex-usage scan --rebuild` to correct history. Rebuilding cannot recover deleted source files, and upgrading the binary alone does not correct old totals.
 
 ## A complete toolkit for everyday use
 
@@ -318,7 +309,7 @@ npm test
 
 By default, `npm test` builds and launches a real Go binary in a temporary directory. Set `CODEX_USAGE_BIN` to reuse an existing build.
 
-Regenerate README animations, videos, and screenshots with `npm run capture:media`; see [media notes](docs/media/README.md) for dependencies, scenarios, and recording checks.
+Regenerate README animations, videos, and screenshots with `npm run capture:media`, and the 30-second promo with `npm run capture:promo`; see [media notes](docs/media/README.md) for dependencies, scenarios, and recording checks.
 
 Current [CI](https://github.com/zJay26/codex-usage/actions/workflows/ci.yml) covers Go tests and vet on Windows, Linux, macOS Apple Silicon / Intel, Linux concurrency checks, six-target cross-builds, and Dashboard tests. Each macOS architecture also runs three install/uninstall/reinstall cycles. Release publication requires the native macOS checks to pass.
 
