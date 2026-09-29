@@ -311,7 +311,7 @@ By default, `npm test` builds and launches a real Go binary in a temporary direc
 
 Regenerate README animations, videos, and screenshots with `npm run capture:media`, and the 30-second promo with `npm run capture:promo`; see [media notes](docs/media/README.md) for dependencies, scenarios, and recording checks.
 
-Current [CI](https://github.com/zJay26/codex-usage/actions/workflows/ci.yml) covers Go tests and vet on Windows, Linux, and macOS Apple Silicon, Linux concurrency checks, six-target cross-builds, Dashboard tests, and one native macOS install/uninstall/reinstall cycle. Release publication additionally repeats the native install checks three times on both macOS Apple Silicon and Intel.
+Current [CI](https://github.com/zJay26/codex-usage/actions/workflows/ci.yml) covers Go tests and vet on Windows, Linux, and macOS Apple Silicon, Linux concurrency checks, Dashboard tests, and one native macOS install/uninstall/reinstall cycle; merges to main also run six-target cross-builds. Release publication additionally repeats the native install checks three times on both macOS Apple Silicon and Intel.
 
 See [the v2.6 technical and verification notes](docs/accounting-v2.6.md) for accounting regressions, task trees, remote time-zone charts, and performance evidence. [ACCEPTANCE.md](ACCEPTANCE.md) archives earlier releases. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue and [SECURITY.md](SECURITY.md) for private vulnerability reporting.
 
