@@ -8,7 +8,7 @@
 
 *完整、顺手的本地用量仪表盘，从每台电脑到每一次任务。*
 
-[在线体验](https://zjay26.github.io/codex-usage/?lang=zh-CN) · [Windows x64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-windows-amd64.exe) · [Linux x64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-amd64) · [macOS Apple Silicon](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-arm64) · [全部下载](#直接安装) · [English](README.en.md) / 简体中文
+[在线体验](https://zjay26.github.io/codex-usage/?lang=zh-CN) · [Windows x64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-windows-amd64.exe) · [Linux x64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-amd64) · [macOS Apple Silicon](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-arm64) · [全部下载](#快速开始) · [English](README.en.md) / 简体中文
 
 [![CI](https://github.com/zJay26/codex-usage/actions/workflows/ci.yml/badge.svg)](https://github.com/zJay26/codex-usage/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/zJay26/codex-usage?display_name=tag)](https://github.com/zJay26/codex-usage/releases/latest)
@@ -25,48 +25,39 @@
 
 > 演示使用完整定价、无异常记录的合成数据，直接录制当前 Dashboard。在线 Demo 不读取你的文件、不设 Cookie、无埋点或外部请求。
 
-## 从总览到每一次任务
+## 快速开始
 
-**codex-usage 是为日常高频使用 Codex 打磨的完整本地用量统计工具。** 总量、趋势、费用、模型、项目和任务明细集中在一个清晰的 Dashboard：先看全貌，再顺着日期、小时、模型或任务找到消耗来源。单台电脑用起来完整顺手，多台电脑使用同一账号时，逐电脑统计又能让每台主机的用量各自清楚。
+**只有两步：下载适合你电脑的程序，然后运行一次 `install`。**
 
-安装一次，历史记录自动整理，后续用量持续更新。**从“今天用了多少”到“这 90 分钟、这个项目、这棵子任务树花了多少”，都能在同一个界面里查清。** 常规 / Fast 拆分、精确到分钟的时间范围、Session 搜索、组合筛选、API 等价费用和数据导出一应俱全；中英双语、明暗主题、显示设置与手机布局让日常查看同样舒服。
+装好后它会自动整理你电脑上已有的 Codex 记录，并在后台持续统计。以后想看用量，用浏览器打开 [http://127.0.0.1:43189](http://127.0.0.1:43189) 即可。不用装数据库，不用注册账号，数据也不会离开你的电脑。
 
-Windows、Linux / WSL、macOS 均可使用，一个程序即可安装，无需部署数据库或中心服务器。所有统计留在当前电脑，不保存 prompt、回复或工具输出，也不读取 `auth.json`。费用是按内置公开 API 单价及 Fast 额度倍率计算的等价估算，并非真实账单或账号配额。
+### 第 1 步：选对版本，下载
 
-## 直接安装
+不确定自己是哪种电脑，可以对照下表：
 
-本文对应稳定版 **[v2.7.1](https://github.com/zJay26/codex-usage/releases/tag/v2.7.1)**；变更和升级边界见 [发布说明](docs/releases/v2.7.1.md)。以下下载链接始终指向最新稳定版。
+| 你的电脑 | 点击下载 |
+|---|---|
+| Windows（绝大多数电脑） | [Windows x64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-windows-amd64.exe) |
+| Windows ARM 设备（少数机型；可在“设置 → 系统 → 关于”看到“ARM 处理器”） | [Windows ARM64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-windows-arm64.exe) |
+| Mac，M 系列芯片（M1 / M2 / M3 / M4 等） | [macOS Apple Silicon](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-arm64) |
+| Mac，Intel 芯片（左上角苹果菜单 → 关于本机，写着“Intel”） | [macOS Intel](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-amd64) |
+| Linux / WSL（绝大多数电脑） | [Linux x64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-amd64) |
+| Linux / WSL ARM 设备 | [Linux ARM64](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-arm64) |
 
-| 系统 | amd64 / x64 | arm64 |
-|---|---|---|
-| Windows | [x64 程序](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-windows-amd64.exe) | [ARM64 程序](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-windows-arm64.exe) |
-| Linux / WSL | [x64 程序](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-amd64) | [ARM64 程序](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-arm64) |
-| macOS | [Intel 程序](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-amd64) | [Apple Silicon 程序](https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-arm64) |
+### 第 2 步：运行 install
 
-### Windows
+**已经用浏览器下载好了？** 打开终端（Windows 用 PowerShell），进入文件所在的文件夹，运行 `<程序文件名> install` 就行。例如 Windows：`.\codex-usage-windows-amd64.exe install`；Mac / Linux 需先执行 `chmod +x <程序文件名>` 赋予运行权限，再执行 `./<程序文件名> install`。
 
-amd64 / x64，无需管理员权限；ARM64 设备将下载地址中的 `amd64` 改为 `arm64`：
+**想省事？** 直接复制下面对应系统的命令，粘贴到终端回车，下载和安装一次完成：
+
+**Windows**：开始菜单搜索“PowerShell”并打开，粘贴运行，无需管理员权限。ARM64 设备把地址里的 `amd64` 改成 `arm64`：
 
 ```powershell
 Invoke-WebRequest https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-windows-amd64.exe -OutFile codex-usage.exe
 .\codex-usage.exe install
 ```
 
-### Linux / WSL
-
-amd64 / x64；ARM64 设备将下载地址中的 `amd64` 改为 `arm64`：
-
-```bash
-curl -fL https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-amd64 -o codex-usage
-chmod +x codex-usage
-./codex-usage install
-```
-
-默认使用 `systemd --user` 登录自启；user bus 不可用时会尝试后台启动并给出提示，需要自行完成自启配置。
-
-### macOS
-
-Apple Silicon；Intel 设备将下载地址中的 `arm64` 改为 `amd64`：
+**macOS**：打开“终端”（启动台里搜索），粘贴运行，无需 `sudo`。以下是 Apple Silicon 版；Intel 设备把地址里的 `arm64` 改成 `amd64`：
 
 ```bash
 curl -fL https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-darwin-arm64 -o codex-usage
@@ -74,31 +65,31 @@ chmod +x codex-usage
 ./codex-usage install
 ```
 
-请在 macOS 图形登录会话中安装，通过用户 LaunchAgent 登录自启，无需 `sudo`。程序未经 Apple Developer ID 签名或公证；校验和打开方式见 [macOS 安装说明](docs/macos.md)。仅有 SSH 会话时可用 `./codex-usage serve` 前台运行。
+请在 Mac 的图形登录界面下操作，安装后会随登录自动启动。程序未经 Apple Developer ID 签名或公证，首次运行可能被系统拦截；打开方式和校验见 [macOS 安装说明](docs/macos.md)。只能通过 SSH 连接时，可用 `./codex-usage serve` 前台运行。
 
-### 校验与打开 Dashboard
+**Linux / WSL**：打开终端，粘贴运行。以下是 x64 版；ARM64 设备把地址里的 `amd64` 改成 `arm64`：
 
-每个 Release 附带 [SHA256SUMS](https://github.com/zJay26/codex-usage/releases/latest/download/SHA256SUMS)。可在执行下载的程序前，用 Windows 的 `Get-FileHash .\codex-usage.exe -Algorithm SHA256`、Linux 的 `sha256sum codex-usage` 或 macOS 的 `shasum -a 256 codex-usage` 计算哈希，与清单中对应系统和架构的完整文件名核对。
+```bash
+curl -fL https://github.com/zJay26/codex-usage/releases/latest/download/codex-usage-linux-amd64 -o codex-usage
+chmod +x codex-usage
+./codex-usage install
+```
 
-安装器会整理本机已有记录并启动后台服务。之后访问安装输出中的 Dashboard 地址，默认是 [http://127.0.0.1:43189](http://127.0.0.1:43189)。也可运行已安装的程序打开浏览器；默认路径下的命令如下：
+默认通过 `systemd --user` 实现登录自启；如果系统不支持，程序会先在后台启动并给出提示，之后需要自行配置自启。
 
-| 系统 | 打开 Dashboard |
-|---|---|
-| Windows PowerShell | `& "$env:LOCALAPPDATA\Programs\codex-usage\codex-usage.exe"` |
-| Linux / WSL | `"$HOME/.local/bin/codex-usage"` |
-| macOS | `"$HOME/Library/Application Support/codex-usage/bin/codex-usage"` |
+### 第 3 步：打开 Dashboard
 
-安装器不会修改 `PATH`。设置过 `CODEX_USAGE_HOME` 时，以安装输出的程序路径为准。Linux 服务器没有桌面环境时，程序会打印 SSH 隧道命令；在自己的电脑执行后再打开 Dashboard。
+安装完成后，用浏览器访问 [http://127.0.0.1:43189](http://127.0.0.1:43189)（这个地址只有你自己的电脑能打开）。如果安装输出里给出了不同的地址，以输出为准。
 
-### 升级现有安装
+这样就完成了：程序在后台运行，历史记录已经整理好，之后的新用量会自动更新，日常直接打开上面的地址查看就行。
 
-从 **v2.5.0** 起，程序默认每 6 小时检查一次 GitHub 最新稳定版，只提示、不强制更新。页面底部的“软件更新”可查看发布说明、关闭自动检查或手动检查；点击“下载并更新”后才下载并校验 SHA256、备份程序和本机统计、替换并重启。新版本启动失败会尝试恢复旧程序和数据，备份保留在状态目录的 `.codex-usage-updates/run-*` 中。
+## 从总览到每一次任务
 
-**已安装 v2.5.0 或更高版本，可直接在软件内选择升级；早于 v2.5.0 的版本需先手动下载并执行 `install`。** 便携版和预览版只提供检查和发布页链接。更新检查只向 GitHub 请求版本信息，下载也来自本项目 Release，不上传用量、路径或对话；关闭自动检查后不会在后台请求更新信息。仍可随时通过重新执行 `install` 手动升级。
+**codex-usage 是为日常高频使用 Codex 打磨的完整本地用量统计工具。** 总量、趋势、费用、模型、项目和任务明细集中在一个清晰的 Dashboard：先看全貌，再顺着日期、小时、模型或任务找到消耗来源。单台电脑用起来完整顺手，多台电脑使用同一账号时，逐电脑统计又能让每台主机的用量各自清楚。
 
-“软件更新”中可以设置**更新包下载目录**，并打开文件夹或复制路径。默认保存到用户下载目录下的 `codex-usage` 文件夹；版本文件夹内保留正式安装包，界面显示最近下载的完整路径。保存新目录只影响后续下载，已有文件留在原处；数据库备份仍保留在本机状态目录。
+安装一次，历史记录自动整理，后续用量持续更新。**从“今天用了多少”到“这 90 分钟、这个项目、这棵子任务树花了多少”，都能在同一个界面里查清。** 常规 / Fast 拆分、精确到分钟的时间范围、Session 搜索、组合筛选、API 等价费用和数据导出一应俱全；中英双语、明暗主题、显示设置与手机布局让日常查看同样舒服。
 
-**v2.6.4 修复压缩请求漏计，保留 v2.6.3 的混合累计修复。** 旧版统计库升级到 schema v11 后，已有统计会保留并标记为需要核对，增量扫描暂停。先备份并确认源 JSONL 仍齐全，再点击“重新扫描”并选择“同意并重建”，或显式执行 `codex-usage scan --rebuild`，修正历史用量。源文件已删除的历史无法由重建恢复；只升级程序不会自动修正旧账。
+Windows、Linux / WSL、macOS 均可使用，一个程序即可安装，无需部署数据库或中心服务器。所有统计留在当前电脑，不保存 prompt、回复或工具输出，也不读取 `auth.json`。费用是按内置公开 API 单价及 Fast 额度倍率计算的等价估算，并非真实账单或账号配额。
 
 ## 为日常使用打磨的完整功能
 
