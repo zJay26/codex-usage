@@ -313,7 +313,7 @@ npm test
 
 README 动图、视频和截图可通过 `npm run capture:media` 重新生成，30 秒宣传片可通过 `npm run capture:promo` 重新生成；依赖、演示场景与录制检查见 [媒体说明](docs/media/README.md)。
 
-当前 [CI](https://github.com/zJay26/codex-usage/actions/workflows/ci.yml) 覆盖 Windows、Linux、macOS Apple Silicon / Intel 的 Go 测试与 vet、Linux 并发检查、六目标交叉构建及 Dashboard 测试；两个 macOS 架构还各执行三轮安装、卸载和重装。Release 发布也要求原生 macOS 检查通过。
+当前 [CI](https://github.com/zJay26/codex-usage/actions/workflows/ci.yml) 覆盖 Windows、Linux、macOS Apple Silicon 的 Go 测试与 vet、Linux 并发检查、Dashboard 测试，以及 macOS 上的一轮安装、卸载和重装；合并到 main 后还会做六目标交叉构建。Release 发布前还会在 macOS Apple Silicon / Intel 上各重复三轮原生安装检查。
 
 v2.6 的计量回归、任务树、远程时区图表与性能证据见 [技术与验证说明](docs/accounting-v2.6.md)；旧版本验收记录归档于 [ACCEPTANCE.md](ACCEPTANCE.md)。问题反馈前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)；涉及本机数据或路径的安全问题请按 [SECURITY.md](SECURITY.md) 私密报告。
 

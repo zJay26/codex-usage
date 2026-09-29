@@ -2,6 +2,7 @@ name: ci
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
@@ -18,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest, macos-15-intel]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -33,10 +34,11 @@ jobs:
         run: go test -race ./internal/usage ./internal/store ./internal/server
       - name: Native macOS install, restart and uninstall
         if: runner.os == 'macOS'
-        run: for attempt in 1 2 3; do bash scripts/test-macos.sh; done
+        run: bash scripts/test-macos.sh
 
   cross-build:
     name: cross-build
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -46,11 +48,6 @@ jobs:
           go-version: "1.26.8"
           cache: true
       - run: bash ./scripts/build.sh
-      - uses: actions/upload-artifact@v7
-        with:
-          name: codex-usage-binaries
-          path: dist/
-          if-no-files-found: error
 
   dashboard:
     name: dashboard
