@@ -17,6 +17,8 @@
 
 </div>
 
+https://github.com/user-attachments/assets/c6636659-f4c3-4848-aade-b688356953d1
+
 ![Codex Usage 完整演示：精确时间查询、小时趋势、月历、任务树、搜索、Fast 筛选、导出、定价与明暗主题](docs/media/codex-usage-demo.gif)
 
 概览 → 分钟级时间查询 → 小时下钻 → 每日月历 → 项目与任务树 → 搜索与 Fast 筛选 → JSON / CSV 导出 → 模型定价 → 明暗主题与中英切换。
