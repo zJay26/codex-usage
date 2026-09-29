@@ -269,33 +269,37 @@
     label(t + 1.6, scene.tree.end - .2, R("tree1", "row"), K.mainTask);
     label(t + 1.85, scene.tree.end - .2, R("tree1", "subtotal"), K.subtotal, { place: "left" });
   }
-  { // 09 export, live usage, and software updates
+  { // 09 export, live usage, and software updates: three equal segments
     const t = S("extras");
-    block("export", "09", t + .1, t + 1.6);
+    const d = (scene.extras.end - t) / 3;
+    const pair = union(R("export", "json"), R("export", "csv"));
+    block("export", "09", t + .1, t + d - .4);
     spot(t, .3, null);
     layer(t, "export", .4);
     cam(t, .7, pad(R("export", "dialog"), 40));
-    spot(t + .6, .35, pad(union(R("export", "json"), R("export", "csv")), 8));
-    label(t + .7, t + 1.7, union(R("export", "json"), R("export", "csv")), K.formats);
+    spot(t + .7, .35, pad(pair, 8));
+    label(t + .8, t + d - .2, pair, K.formats);
 
-    block("live", "09", t + 1.9, t + 3.5);
-    spot(t + 1.8, .25, null);
-    layer(t + 1.85, "live0", .35);
-    cam(t + 1.85, .6, pad(R("live0", "hero"), 30));
-    spot(t + 2.3, .35, pad(R("live0", "totalCard"), 6));
-    label(t + 2.4, t + 3.6, R("live0", "total"), K.live, { dot: true });
-    layer(t + 2.75, "live1", .2);
-    layer(t + 3.25, "live2", .2);
+    const u = t + d;
+    block("live", "09", u + .1, u + d - .4);
+    spot(u - .1, .25, null);
+    layer(u, "live0", .35);
+    cam(u, .6, pad(R("live0", "hero"), 30));
+    spot(u + .5, .35, pad(R("live0", "totalCard"), 6));
+    label(u + .6, u + d - .2, R("live0", "total"), K.live, { dot: true });
+    layer(u + 1.2, "live1", .2);
+    layer(u + 1.9, "live2", .2);
 
-    block("update", "09", t + 3.8, scene.extras.end - .3);
-    spot(t + 3.6, .25, null);
-    layer(t + 3.7, "update0", .35);
-    cam(t + 3.7, .5, pad(R("update0", "banner"), 60));
-    click(t + 4.3, R("update0", "review"));
-    layer(t + 4.35, "update1", .25);
-    cam(t + 4.35, .6, pad(R("update1", "dialog"), 30));
-    spot(t + 4.8, .35, pad(union(R("update1", "versions"), R("update1", "status")), 8));
-    label(t + 4.9, scene.extras.end - .2, R("update1", "versions"), K.newVersion);
+    const v = t + 2 * d;
+    block("update", "09", v + .1, scene.extras.end - .3);
+    spot(v - .1, .25, null);
+    layer(v, "update0", .35);
+    cam(v, .5, pad(R("update0", "banner"), 60));
+    click(v + .85, R("update0", "review"));
+    layer(v + .9, "update1", .25);
+    cam(v + .9, .6, pad(R("update1", "dialog"), 30));
+    spot(v + 1.4, .35, pad(union(R("update1", "versions"), R("update1", "status")), 8));
+    label(v + 1.5, scene.extras.end - .2, R("update1", "versions"), K.newVersion);
   }
   { // 10 theme, language and phone
     const t = S("interface");
@@ -303,10 +307,10 @@
     spot(t, .3, null);
     layer(t, "light", .4);
     cam(t, .7, { x: 0, y: 0, w: dims.w, h: dims.h });
-    click(t + 1.0, R("light", "theme"));
-    layer(t + 1.05, "dark", .75, "wipe");
-    click(t + 1.95, R("dark", "locale"));
-    layer(t + 2.0, "otherDark", .3);
+    click(t + 1.3, R("light", "theme"));
+    layer(t + 1.35, "dark", .8, "wipe");
+    click(t + 2.8, R("dark", "locale"));
+    layer(t + 2.85, "otherDark", .35);
   }
   beats.cursor.sort((a, b) => a.t - b.t);
   if (beats.reveals.length) reveal.src = layers[beats.reveals[0].name].src;
@@ -506,7 +510,7 @@
   $("#phone img").src = P.assets.base + shots.mobile.file;
   const phoneScale = L.phone.h / 884;
   function renderPhone(t) {
-    const e = env(t, S("interface") + 2.4, scene.interface.end - .45, .7, .4);
+    const e = env(t, S("interface") + 3.7, scene.interface.end - .45, .7, .4);
     phone.style.visibility = e.v > .001 ? "visible" : "hidden";
     set(phone, { opacity: e.v, transform: `translate(${L.phone.x + (1 - e.i) * 280}px, ${L.phone.y + e.o * 60}px) scale(${phoneScale}) rotate(${(1 - e.i) * 7}deg)` });
   }

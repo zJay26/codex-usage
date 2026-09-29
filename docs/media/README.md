@@ -27,7 +27,7 @@ The export dialog is demonstrated without downloading files. Software installati
 
 ## Promo film
 
-`npm run capture:promo` renders a 53-second promotional film in Chinese and English, in landscape and vertical cuts:
+`npm run capture:promo` renders a 59-second promotional film in Chinese and English, in landscape and vertical cuts:
 
 - `codex-usage-promo-zh.mp4` and `codex-usage-promo-en.mp4`: 1920 × 1080, 30 fps, H.264 + AAC.
 - `codex-usage-promo-zh-vertical.mp4` and `codex-usage-promo-en-vertical.mp4`: 1080 × 1920 for short-video platforms.
