@@ -51,6 +51,11 @@ test.beforeAll(async () => {
   const port = await findFreePort();
   codexHomeDir = await mkdtemp(path.join(tmpdir(), "codex-usage-codex-home-"));
   const codexHome = codexHomeDir;
+  // The hourly assertions target the current hour; if the suite would straddle
+  // an hour boundary, wait it out instead of failing intermittently.
+  const clock = new Date();
+  const msToNextHour = 3_600_000 - (clock.getMinutes() * 60_000 + clock.getSeconds() * 1_000 + clock.getMilliseconds());
+  if (msToNextHour < 150_000) await delay(msToNextHour + 1_000);
   const now = new Date();
   const currentHour = new Date(now);
   currentHour.setMinutes(0, 0, 0);
