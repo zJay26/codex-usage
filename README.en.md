@@ -17,7 +17,7 @@
 
 </div>
 
-https://github.com/user-attachments/assets/a24e1a43-1948-4bca-9958-10d9975b570c
+https://github.com/user-attachments/assets/7927db16-3f03-4e3c-9afa-a52530c0d02d
 
 ![Complete Codex Usage tour: precise time ranges, hourly trends, calendar, task trees, search, Fast filters, exports, pricing, and themes](docs/media/codex-usage-demo-en.gif)
 
