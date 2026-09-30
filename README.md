@@ -17,7 +17,7 @@
 
 </div>
 
-https://github.com/user-attachments/assets/c6636659-f4c3-4848-aade-b688356953d1
+https://github.com/user-attachments/assets/b3e96d2b-8606-4e96-ad98-9f360ffbce44
 
 ![Codex Usage 完整演示：精确时间查询、小时趋势、月历、任务树、搜索、Fast 筛选、导出、定价与明暗主题](docs/media/codex-usage-demo.gif)
 
