@@ -20,7 +20,9 @@ const agents = [
 ];
 let pricingOverrides = {};
 const catalog = [
+    { model: "codex-auto-review", display_name: "Codex Auto-review", input_usd_per_million: "0.00", cached_input_usd_per_million: "0.00", cache_write_input_usd_per_million: "0.00", output_usd_per_million: "0.00", source: "" },
   { model: "gpt-6-astra", display_name: "GPT-6 Astra", input_usd_per_million: "10.00", cached_input_usd_per_million: "1.00", cache_write_input_usd_per_million: "12.50", output_usd_per_million: "50.00", source: "https://developers.openai.com/api/docs/models/gpt-6-astra" },
+  { model: "gpt-6.1-sol", display_name: "GPT-6.1 Sol", input_usd_per_million: "2.00", cached_input_usd_per_million: "0.10", cache_write_input_usd_per_million: "2.50", output_usd_per_million: "10.00", source: "https://developers.openai.com/api/docs/models/gpt-6.1-sol" },
   { model: "gpt-6-sol", display_name: "GPT-6 Sol", input_usd_per_million: "2.00", cached_input_usd_per_million: "0.20", cache_write_input_usd_per_million: "2.50", output_usd_per_million: "10.00", source: "https://developers.openai.com/api/docs/models/gpt-6-sol" },
   { model: "gpt-6-luna", display_name: "GPT-6 Luna", input_usd_per_million: "0.10", cached_input_usd_per_million: "0.01", cache_write_input_usd_per_million: "0.125", output_usd_per_million: "0.50", source: "https://developers.openai.com/api/docs/models/gpt-6-luna" },
   { model: "gpt-5.6-sol", display_name: "GPT-5.6 Sol", input_usd_per_million: "5.00", cached_input_usd_per_million: "0.50", cache_write_input_usd_per_million: "6.25", output_usd_per_million: "30.00", source: "https://developers.openai.com/api/docs/models/gpt-5.6-sol" },
@@ -65,22 +67,22 @@ function costEstimate(url) {
     const input = Math.round(total * .82);
     const output = total - input;
     const dailyUsage = { input, cached_input: Math.round(input * .56), cache_write_input: Math.round(input * .025), output, reasoning_output: Math.round(output * .37), total };
-    const priced = Math.round(total * (pricingOverrides["codex-auto-review"] ? 1 : .916));
+    const priced = Math.round(total * (pricingOverrides["internal-review"] ? 1 : .916));
     const unpriced = total - priced;
     const usd = total ? (total / 1_000_000 * 3.18).toFixed(9) : "0.000000000";
-    points.push({ date: localDateKey(date), time: new Date(date).toISOString(), usage: dailyUsage, estimate: { usd, regular_input_usd: usd, cached_input_usd: "0.000000000", cache_write_input_usd: "0.000000000", output_usd: "0.000000000", priced_tokens: priced, unpriced_tokens: unpriced, coverage_ratio: total ? priced / total : 0, reasons: unpriced ? [{ kind: "unknown_model", model: "codex-auto-review", tokens: unpriced, detail: "没有公开 API 单价或本机定价覆写" }] : [] } });
+    points.push({ date: localDateKey(date), time: new Date(date).toISOString(), usage: dailyUsage, estimate: { usd, regular_input_usd: usd, cached_input_usd: "0.000000000", cache_write_input_usd: "0.000000000", output_usd: "0.000000000", priced_tokens: priced, unpriced_tokens: unpriced, coverage_ratio: total ? priced / total : 0, reasons: unpriced ? [{ kind: "unknown_model", model: "internal-review", tokens: unpriced, detail: "没有公开 API 单价或本机定价覆写" }] : [] } });
   }
   const totalUsage = points.reduce((sum, point) => Object.fromEntries(Object.keys(point.usage).map((key) => [key, (sum[key] || 0) + point.usage[key]])), {});
   const pricedTokens = points.reduce((sum, point) => sum + point.estimate.priced_tokens, 0);
   const unpricedTokens = points.reduce((sum, point) => sum + point.estimate.unpriced_tokens, 0);
   const totalCost = points.reduce((sum, point) => sum + Number(point.estimate.usd), 0);
-  const estimate = { usd: totalCost.toFixed(9), regular_input_usd: totalCost.toFixed(9), cached_input_usd: "0.000000000", cache_write_input_usd: "0.000000000", output_usd: "0.000000000", priced_tokens: pricedTokens, unpriced_tokens: unpricedTokens, coverage_ratio: pricedTokens + unpricedTokens ? pricedTokens / (pricedTokens + unpricedTokens) : 0, reasons: unpricedTokens ? [{ kind: "unknown_model", model: "codex-auto-review", tokens: unpricedTokens, detail: "没有公开 API 单价或本机定价覆写" }] : [] };
+  const estimate = { usd: totalCost.toFixed(9), regular_input_usd: totalCost.toFixed(9), cached_input_usd: "0.000000000", cache_write_input_usd: "0.000000000", output_usd: "0.000000000", priced_tokens: pricedTokens, unpriced_tokens: unpricedTokens, coverage_ratio: pricedTokens + unpricedTokens ? pricedTokens / (pricedTokens + unpricedTokens) : 0, reasons: unpricedTokens ? [{ kind: "unknown_model", model: "internal-review", tokens: unpricedTokens, detail: "没有公开 API 单价或本机定价覆写" }] : [] };
   return {
-    basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-09-23", bucket: "day", summary: estimate, points,
+    basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-10-07", bucket: "day", summary: estimate, points,
     models: [
       { key: "gpt-5.4", usage: { ...totalUsage, total: Math.round(totalUsage.total * .63) }, estimate: { ...estimate, usd: (totalCost * .71).toFixed(9), priced_tokens: Math.round(totalUsage.total * .63), unpriced_tokens: 0, coverage_ratio: 1, reasons: [] } },
       { key: "gpt-5.6-terra", usage: { ...totalUsage, total: Math.round(totalUsage.total * .26) }, estimate: { ...estimate, usd: (totalCost * .25).toFixed(9), priced_tokens: Math.round(totalUsage.total * .26), unpriced_tokens: 0, coverage_ratio: 1, reasons: [] } },
-      { key: "codex-auto-review", usage: { ...totalUsage, total: Math.round(totalUsage.total * .11) }, estimate: { ...estimate, usd: pricingOverrides["codex-auto-review"] ? (totalCost * .04).toFixed(9) : "0.000000000", priced_tokens: pricingOverrides["codex-auto-review"] ? Math.round(totalUsage.total * .11) : 0, unpriced_tokens: pricingOverrides["codex-auto-review"] ? 0 : Math.round(totalUsage.total * .11), coverage_ratio: pricingOverrides["codex-auto-review"] ? 1 : 0 } }
+      { key: "internal-review", usage: { ...totalUsage, total: Math.round(totalUsage.total * .11) }, estimate: { ...estimate, usd: pricingOverrides["internal-review"] ? (totalCost * .04).toFixed(9) : "0.000000000", priced_tokens: pricingOverrides["internal-review"] ? Math.round(totalUsage.total * .11) : 0, unpriced_tokens: pricingOverrides["internal-review"] ? 0 : Math.round(totalUsage.total * .11), coverage_ratio: pricingOverrides["internal-review"] ? 1 : 0 } }
     ]
   };
 }
@@ -88,7 +90,7 @@ function costEstimate(url) {
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://127.0.0.1:${port}`);
   if (url.pathname === "/api/v1/status") return json(response, {
-    version: "2.7.1-preview", scanning: false,
+    version: "2.7.2-preview", scanning: false,
     status: {
       machine: { id: "62c0172d-36c4-4ec9-a074-02b9ec2b45e1", label: "WORKSTATION-19 · windows", hostname: "WORKSTATION-19", os: "windows", arch: "amd64" },
       last_scan: now.toISOString(), accounting_mode: "jsonl_only", otel_active: false,
@@ -104,15 +106,15 @@ const server = http.createServer(async (request, response) => {
   }
   if (url.pathname === "/api/v1/cost-estimate") return json(response, costEstimate(url));
   if (url.pathname === "/api/v1/pricing" && request.method === "GET") return json(response, {
-    basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-09-23", catalog, overrides: pricingOverrides,
-    unpriced_models: pricingOverrides["codex-auto-review"] ? [] : [{ key: "codex-auto-review", usage: { ...usage, total: 438_000 }, events: 9, sessions: 3 }]
+    basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-10-07", catalog, overrides: pricingOverrides,
+    unpriced_models: pricingOverrides["internal-review"] ? [] : [{ key: "internal-review", usage: { ...usage, total: 438_000 }, events: 9, sessions: 3 }]
   });
   if (url.pathname === "/api/v1/pricing/overrides" && request.method === "PUT") {
     let body = "";
     for await (const chunk of request) body += chunk;
     try {
       pricingOverrides = JSON.parse(body).overrides || {};
-      return json(response, { basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-09-23", catalog, overrides: pricingOverrides, unpriced_models: pricingOverrides["codex-auto-review"] ? [] : [{ key: "codex-auto-review", usage: { ...usage, total: 438_000 }, events: 9, sessions: 3 }] });
+      return json(response, { basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-10-07", catalog, overrides: pricingOverrides, unpriced_models: pricingOverrides["internal-review"] ? [] : [{ key: "internal-review", usage: { ...usage, total: 438_000 }, events: 9, sessions: 3 }] });
     } catch {
       return json(response, { error: "无效请求体" }, 400);
     }

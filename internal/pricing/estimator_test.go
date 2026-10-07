@@ -60,6 +60,7 @@ func TestGPT6SolAndLunaCategoryEstimates(t *testing.T) {
 		name, regular, cached, write, output, standard, fast string
 	}{
 		{"gpt-6-sol", "0.001400000", "0.000040000", "0.000250000", "0.001000000", "0.002690000", "0.006725000"},
+		{"gpt-6.1-sol", "0.001400000", "0.000020000", "0.000250000", "0.001000000", "0.002670000", "0.006675000"},
 		{"gpt-6-luna", "0.000070000", "0.000002000", "0.000012500", "0.000050000", "0.000134500", "0.000336250"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -126,7 +127,7 @@ func TestEvaluateEventReportsSpecificUnpricedReasons(t *testing.T) {
 	}{
 		{
 			name:   "unknown model",
-			event:  model.UsageEvent{Model: "codex-auto-review", Confidence: model.ConfidenceExact, Usage: model.TokenUsage{Input: 80, Output: 20, Total: 100}},
+			event:  model.UsageEvent{Model: "internal-review", Confidence: model.ConfidenceExact, Usage: model.TokenUsage{Input: 80, Output: 20, Total: 100}},
 			reason: "unknown_model", missed: 100,
 		},
 		{

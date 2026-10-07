@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	CatalogAsOf = "2026-09-23"
+	CatalogAsOf = "2026-10-07"
 	Currency    = "USD"
 	Basis       = "current_standard_api_text_token_prices"
 )
@@ -45,6 +45,20 @@ type ResolvedRate struct {
 }
 
 var builtInCatalog = []CatalogEntry{
+	{
+		// Local accounting policy, not a published API model price. Keep exact
+		// matching and allow explicit overrides from older installations.
+		Model: "codex-auto-review", DisplayName: "Codex Auto-review",
+		InputUSDPerMillion: "0.00", CachedInputUSDPerMillion: "0.00",
+		CacheWriteInputUSDPerMillion: "0.00", OutputUSDPerMillion: "0.00",
+	},
+	{
+		Model: "gpt-6.1-sol", DisplayName: "GPT-6.1 Sol",
+		SnapshotPatterns:   []string{"gpt-6.1-sol-YYYY-MM-DD"},
+		InputUSDPerMillion: "2.00", CachedInputUSDPerMillion: "0.10",
+		CacheWriteInputUSDPerMillion: "2.50", OutputUSDPerMillion: "10.00",
+		Source: "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+	},
 	{
 		Model: "gpt-6-astra", DisplayName: "GPT-6 Astra",
 		SnapshotPatterns:   []string{"gpt-6-astra-YYYY-MM-DD"},
@@ -147,7 +161,7 @@ func NormalizeOverrides(input map[string]Override) (map[string]Override, error) 
 		raw.CachedInputUSDPerMillion = strings.TrimSpace(raw.CachedInputUSDPerMillion)
 		raw.CacheWriteInputUSDPerMillion = strings.TrimSpace(raw.CacheWriteInputUSDPerMillion)
 		raw.OutputUSDPerMillion = strings.TrimSpace(raw.OutputUSDPerMillion)
-		if _, ok := resolveBuiltIn(model); ok {
+		if _, ok := resolveBuiltIn(model); ok && model != "codex-auto-review" {
 			return nil, fmt.Errorf("内置官方模型 %q 不能被本机覆写", model)
 		}
 		if raw.AliasOf != "" {
@@ -205,6 +219,12 @@ func Resolve(model string, overrides map[string]Override) (ResolvedRate, bool, e
 func resolveBuiltIn(model string) (CatalogEntry, bool) {
 	model = strings.ToLower(strings.TrimSpace(model))
 	for _, entry := range builtInCatalog {
+		if len(entry.SnapshotPatterns) == 0 {
+			if model == entry.Model {
+				return entry, true
+			}
+			continue
+		}
 		if modelMatches(model, entry.Model) {
 			return entry, true
 		}

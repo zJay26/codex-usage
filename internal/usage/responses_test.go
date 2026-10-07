@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zJay26/codex-usage/internal/model"
 	"github.com/zJay26/codex-usage/internal/store"
@@ -155,6 +156,9 @@ func TestResponseConflictRollsBackAndBadShapeDoesNotOwnTurn(t *testing.T) {
 }
 
 func TestResponseAttributionDateAndMode(t *testing.T) {
+	previousLocal := time.Local
+	time.Local = time.UTC
+	t.Cleanup(func() { time.Local = previousLocal })
 	st, home, path := accountingFixture(t)
 	appendAccounting(t, path, accountingMeta+accountingTurn("one")+responseLine("scope-test", "one", "a", "2026-09-08T01:00:00Z", usage(10, 5, 0, 2, 1, 12), usage(10, 5, 0, 2, 1, 12))+accountingTurn("two")+responseLine("scope-test", "two", "b", "2026-09-09T01:00:00Z", usage(20, 0, 0, 3, 1, 23), usage(20, 0, 0, 3, 1, 23)))
 	scanResponses(t, st, home)
