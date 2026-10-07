@@ -40,7 +40,7 @@ func TestDashboardAPIAndExport(t *testing.T) {
 	}
 	if _, err := st.InsertEvent(context.Background(), model.UsageEvent{
 		ID: "unpriced-fixture", Timestamp: at.Add(time.Minute), ObservedAt: at.Add(time.Minute), SessionID: "session-2",
-		Model: "codex-auto-review", Source: "codex_desktop", AgentType: "main",
+		Model: "internal-review", Source: "codex_desktop", AgentType: "main",
 		Usage:      model.TokenUsage{Input: 10, Output: 10, Total: 20},
 		Provenance: model.ProvenanceSessionJSONL, Confidence: model.ConfidenceExact,
 	}, "unpriced-fixture.jsonl"); err != nil {
@@ -229,7 +229,7 @@ func TestDashboardAPIAndExport(t *testing.T) {
 	}
 
 	request, _ := http.NewRequest(http.MethodPut, httpServer.URL+"/api/v1/pricing/overrides", strings.NewReader(
-		`{"overrides":{"codex-auto-review":{"alias_of":"gpt-5.6-luna"}}}`,
+		`{"overrides":{"internal-review":{"alias_of":"gpt-5.6-luna"}}}`,
 	))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Origin", httpServer.URL)
@@ -239,7 +239,7 @@ func TestDashboardAPIAndExport(t *testing.T) {
 	}
 	payload, _ := io.ReadAll(response.Body)
 	response.Body.Close()
-	if response.StatusCode != http.StatusOK || savedOverrides["codex-auto-review"].AliasOf != "gpt-5.6-luna" {
+	if response.StatusCode != http.StatusOK || savedOverrides["internal-review"].AliasOf != "gpt-5.6-luna" {
 		t.Fatalf("pricing override was not saved: status=%d body=%s saved=%#v", response.StatusCode, payload, savedOverrides)
 	}
 
@@ -444,6 +444,9 @@ func TestParseSince(t *testing.T) {
 }
 
 func TestParseFilterDateUsesOneLocalNaturalDay(t *testing.T) {
+	previousLocal := time.Local
+	time.Local = time.FixedZone("test", 8*60*60)
+	t.Cleanup(func() { time.Local = previousLocal })
 	filter, err := parseFilter(url.Values{"date": {"2026-07-30"}})
 	if err != nil {
 		t.Fatal(err)

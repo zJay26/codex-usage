@@ -1622,7 +1622,7 @@ function renderPricing(payload) {
 }
 
 function renderCatalog(catalog) {
-  $("#pricingCatalog").innerHTML = `<div class="catalog-row header"><span>${escapeHTML(t("pricing.catalogModel"))}</span><span>Input</span><span>Cached</span><span>Write</span><span>Output</span></div>${catalog.map((entry) => `<div class="catalog-row"><a href="${escapeHTML(entry.source)}" target="_blank" rel="noreferrer">${escapeHTML(entry.display_name)}</a><span>${escapeHTML(entry.input_usd_per_million)}</span><span>${escapeHTML(entry.cached_input_usd_per_million)}</span><span>${escapeHTML(entry.cache_write_input_usd_per_million || "—")}</span><span>${escapeHTML(entry.output_usd_per_million)}</span></div>`).join("")}`;
+  $("#pricingCatalog").innerHTML = `<div class="catalog-row header"><span>${escapeHTML(t("pricing.catalogModel"))}</span><span>Input</span><span>Cached</span><span>Write</span><span>Output</span></div>${catalog.map((entry) => `<div class="catalog-row">${entry.source ? `<a href="${escapeHTML(entry.source)}" target="_blank" rel="noreferrer">${escapeHTML(entry.display_name)}</a>` : `<span>${escapeHTML(entry.display_name)}</span>`}<span>${escapeHTML(entry.input_usd_per_million)}</span><span>${escapeHTML(entry.cached_input_usd_per_million)}</span><span>${escapeHTML(entry.cache_write_input_usd_per_million || "—")}</span><span>${escapeHTML(entry.output_usd_per_million)}</span></div>`).join("")}`;
 }
 
 function appendOverrideCard(model, override = null, observedTokens = null) {
@@ -1639,7 +1639,7 @@ function appendOverrideCard(model, override = null, observedTokens = null) {
   card.dataset.pricingModel = model;
   card.innerHTML = `<div class="override-card-head"><div><strong>${escapeHTML(model)}</strong><small>${observedTokens == null ? escapeHTML(t("pricing.localCustom")) : escapeHTML(t("pricing.observed", { tokens: fullToken(observedTokens) }))}</small></div><button class="remove-override pressable" type="button">${escapeHTML(t("action.remove"))}</button></div>
     <div class="override-mode">
-      <label>${escapeHTML(t("pricing.mode"))}<select data-rate-mode><option value="unpriced" ${mode === "unpriced" ? "selected" : ""}>${escapeHTML(t("pricing.keepUnpriced"))}</option><option value="alias" ${mode === "alias" ? "selected" : ""}>${escapeHTML(t("pricing.alias"))}</option><option value="custom" ${mode === "custom" ? "selected" : ""}>${escapeHTML(t("pricing.custom"))}</option></select></label>
+      <label>${escapeHTML(t("pricing.mode"))}<select data-rate-mode><option value="unpriced" ${mode === "unpriced" ? "selected" : ""}>${escapeHTML(t(model.toLowerCase() === "codex-auto-review" ? "pricing.defaultZero" : "pricing.keepUnpriced"))}</option><option value="alias" ${mode === "alias" ? "selected" : ""}>${escapeHTML(t("pricing.alias"))}</option><option value="custom" ${mode === "custom" ? "selected" : ""}>${escapeHTML(t("pricing.custom"))}</option></select></label>
       <label class="alias-field">${escapeHTML(t("pricing.publicModel"))}<select data-alias><option value="">${escapeHTML(t("pricing.chooseModel"))}</option>${aliasOptions}</select></label>
       <div class="custom-rate-grid">
         <label>Input<input data-rate="input_usd_per_million" inputmode="decimal" value="${escapeHTML(override?.input_usd_per_million || "")}" placeholder="USD / 1M"></label>

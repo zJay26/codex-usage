@@ -851,8 +851,10 @@ test("custom minute range queries real event totals, validates bounds, and uses 
   } finally { await context.close(); }
 });
 
-test("GPT-6 Sol and Luna price recorded usage and appear in the catalog", async ({ page }, testInfo) => {
+test("GPT-6.1 Sol and Auto-review pricing agree across the catalog, summary and sessions", async ({ page }, testInfo) => {
   const cases = [
+    { model: "codex-auto-review", recorded: "codex-auto-review", display: "Codex Auto-review", rates: ["0.00", "0.00", "0.00", "0.00"], standard: "0.000000000", fast: "0.000000000" },
+    { model: "gpt-6.1-sol", recorded: "gpt-6.1-sol-2026-09-29", display: "GPT-6.1 Sol", rates: ["2.00", "0.10", "2.50", "10.00"], standard: "0.002670000", fast: "0.006675000" },
     { model: "gpt-6-sol", recorded: "gpt-6-sol", display: "GPT-6 Sol", rates: ["2.00", "0.20", "2.50", "10.00"], standard: "0.002690000", fast: "0.006725000" },
     { model: "gpt-6-luna", recorded: "gpt-6-luna-2026-09-22", display: "GPT-6 Luna", rates: ["0.10", "0.01", "0.125", "0.50"], standard: "0.000134500", fast: "0.000336250" }
   ];
@@ -900,10 +902,29 @@ test("GPT-6 Sol and Luna price recorded usage and appear in the catalog", async 
   const card = page.locator('[data-pricing-model="e2e-gpt6-alias"]');
   await card.locator("[data-rate-mode]").selectOption("alias");
   for (const item of cases) {
-    const row = page.locator("#pricingCatalog .catalog-row").filter({ has: page.getByRole("link", { name: item.display, exact: true }) });
-    await expect(row.locator("span")).toHaveText(item.rates);
+    const row = page.locator("#pricingCatalog .catalog-row").filter({ has: page.getByText(item.display, { exact: true }) });
+    await expect(row.locator("span")).toHaveText(item.model === "codex-auto-review" ? [item.display, ...item.rates] : item.rates);
     await card.locator("[data-alias]").selectOption(item.model);
     await expect(card.locator("[data-alias]")).toHaveValue(item.model);
   }
   await page.screenshot({ path: testInfo.outputPath("gpt6-pricing-catalog.png") });
+
+  // An older explicit Auto-review alias remains valid; resetting it in the UI
+  // restores zero pricing and invalidates cached cost/session estimates.
+  const override = await page.request.put(`${baseURL}/api/v1/pricing/overrides`, {
+    headers: { Origin: baseURL }, data: { overrides: { "codex-auto-review": { alias_of: "gpt-6.1-sol" } } }
+  });
+  expect(override.ok()).toBeTruthy();
+  expect((await get("cost-estimate?model=codex-auto-review")).summary.usd).toBe("0.002670000");
+  await page.goto(dashboardURL, { waitUntil: "networkidle" });
+  await page.locator("#pricingButton").click();
+  const autoReview = page.locator('[data-pricing-model="codex-auto-review"]');
+  await expect(autoReview.locator('[data-rate-mode] option[value="unpriced"]')).toHaveText("使用默认零价");
+  await autoReview.locator("[data-rate-mode]").selectOption("unpriced");
+  await page.locator("#savePricing").click();
+  await expect(page.locator("#pricingDialog")).not.toBeVisible();
+  expect((await get("cost-estimate?model=codex-auto-review")).summary.usd).toBe("0.000000000");
+  const resetSessions = await get("session-estimates?model=codex-auto-review&cost_basis=codex_fast_weighted");
+  expect(resetSessions.items[0].estimate.usd).toBe("0.000000000");
+  expect(resetSessions.items[0].estimate.priced_tokens).toBe(1100);
 });

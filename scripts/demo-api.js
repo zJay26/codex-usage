@@ -21,7 +21,9 @@
     total: 10_170_000
   };
   const catalog = [
+    { model: "codex-auto-review", display_name: "Codex Auto-review", input_usd_per_million: "0.00", cached_input_usd_per_million: "0.00", cache_write_input_usd_per_million: "0.00", output_usd_per_million: "0.00", source: "" },
     { model: "gpt-6-astra", display_name: "GPT-6 Astra", input_usd_per_million: "10.00", cached_input_usd_per_million: "1.00", cache_write_input_usd_per_million: "12.50", output_usd_per_million: "50.00", source: "#synthetic-pricing" },
+    { model: "gpt-6.1-sol", display_name: "GPT-6.1 Sol", input_usd_per_million: "2.00", cached_input_usd_per_million: "0.10", cache_write_input_usd_per_million: "2.50", output_usd_per_million: "10.00", source: "#synthetic-pricing" },
     { model: "gpt-6-sol", display_name: "GPT-6 Sol", input_usd_per_million: "2.00", cached_input_usd_per_million: "0.20", cache_write_input_usd_per_million: "2.50", output_usd_per_million: "10.00", source: "#synthetic-pricing" },
     { model: "gpt-6-luna", display_name: "GPT-6 Luna", input_usd_per_million: "0.10", cached_input_usd_per_million: "0.01", cache_write_input_usd_per_million: "0.125", output_usd_per_million: "0.50", source: "#synthetic-pricing" },
     { model: "gpt-5.6-sol", display_name: "GPT-5.6 Sol", input_usd_per_million: "5.00", cached_input_usd_per_million: "0.50", cache_write_input_usd_per_million: "6.25", output_usd_per_million: "30.00", source: "#synthetic-pricing" },
@@ -36,7 +38,7 @@
   ] : [
     { key: diagnostics ? "gpt-5.4" : "gpt-6-sol", share: .57, events: 71, sessions: 15 },
     { key: diagnostics ? "gpt-5.6-terra" : "gpt-6-astra", share: .31, events: 32, sessions: 8 },
-    { key: diagnostics ? "codex-auto-review" : "gpt-6-luna", share: .12, events: 11, sessions: 3 }
+    { key: diagnostics ? "internal-review" : "gpt-6-luna", share: .12, events: 11, sessions: 3 }
   ];
   const agents = promo ? [
     { key: "main", share: .71, events: 12_380, sessions: 214 },
@@ -230,9 +232,9 @@
         estimate.standard_base_usd = (Number(estimate.standard_base_usd)+base).toFixed(9);
         const missingWrite = rate.cache_write_input_usd_per_million == null ? u.cache_write_input : 0;
         unpriced("cache_write_rate_missing", part.key, missingWrite);
-        const factor = {"gpt-6-astra":2.5,"gpt-6-sol":2.5,"gpt-6-luna":2.5,"gpt-5.6-sol":2.5,"gpt-5.6-terra":2.5,"gpt-5.6-luna":2.5,"gpt-5.5":2.5,"gpt-5.4":2}[alias];
-        if (weighted && mode === "fast" && !factor) { unpriced("fast_multiplier_missing", part.key, total-missingWrite); continue; }
-        const multiplier = weighted && mode === "fast" ? factor : 1;
+        const factor = {"gpt-6-astra":2.5,"gpt-6.1-sol":2.5,"gpt-6-sol":2.5,"gpt-6-luna":2.5,"gpt-5.6-sol":2.5,"gpt-5.6-terra":2.5,"gpt-5.6-luna":2.5,"gpt-5.5":2.5,"gpt-5.4":2}[alias];
+        if (weighted && mode === "fast" && !factor && base !== 0) { unpriced("fast_multiplier_missing", part.key, total-missingWrite); continue; }
+        const multiplier = weighted && mode === "fast" ? (factor || 1) : 1;
         for (const [key, amount] of Object.entries(categories)) estimate[key] = (Number(estimate[key])+amount*multiplier).toFixed(9);
         estimate.usd = (Number(estimate.usd)+base*multiplier).toFixed(9);
         estimate[mode === "fast" ? "fast_mode_usd" : "regular_mode_usd"] = (Number(estimate[mode === "fast" ? "fast_mode_usd" : "regular_mode_usd"])+base*multiplier).toFixed(9);
@@ -260,7 +262,7 @@
       for (const point of payload.points) for (const mode of ["regular","fast","unknown"]) payload.modes[mode]=addUsage(payload.modes[mode],point.modes[mode]);
       payload.summary = demoEstimate(payload.modes, url.searchParams.get("model"), url.searchParams.get("cost_basis") === "codex_fast_weighted");
       payload.basis = url.searchParams.get("cost_basis") || "current_standard_api_text_token_prices";
-      payload.fast_rules_as_of = "2026-09-23";
+      payload.fast_rules_as_of = "2026-10-07";
     }
     return payload;
   }
@@ -329,7 +331,7 @@
       const input = Math.round(total * .82);
       const output = total - input;
       const usage = { input, cached_input: Math.round(input * .56), cache_write_input: Math.round(input * .025), output, reasoning_output: Math.round(output * .37), total };
-      const custom = Boolean(pricingOverrides["codex-auto-review"]);
+      const custom = Boolean(pricingOverrides["internal-review"]);
       const priced = Math.round(total * (custom ? 1 : .88));
       const unpriced = total - priced;
       const usd = (priced / 1_000_000 * 3.18).toFixed(9);
@@ -346,7 +348,7 @@
           priced_tokens: priced,
           unpriced_tokens: unpriced,
           coverage_ratio: total ? priced / total : 0,
-          reasons: unpriced ? [{ kind: "unknown_model", model: "codex-auto-review", tokens: unpriced, detail: "Synthetic model has no public API rate or local override." }] : []
+          reasons: unpriced ? [{ kind: "unknown_model", model: "internal-review", tokens: unpriced, detail: "Synthetic model has no public API rate or local override." }] : []
         }
       });
     }
@@ -398,14 +400,14 @@
       usd: totalCost.toFixed(9), regular_input_usd: totalCost.toFixed(9), cached_input_usd: "0.000000000", cache_write_input_usd: "0.000000000", output_usd: "0.000000000",
       priced_tokens: pricedTokens, unpriced_tokens: unpricedTokens,
       coverage_ratio: pricedTokens + unpricedTokens ? pricedTokens / (pricedTokens + unpricedTokens) : 0,
-      reasons: unpricedTokens ? [{ kind: "unknown_model", model: "codex-auto-review", tokens: unpricedTokens, detail: "Synthetic model has no public API rate or local override." }] : []
+      reasons: unpricedTokens ? [{ kind: "unknown_model", model: "internal-review", tokens: unpricedTokens, detail: "Synthetic model has no public API rate or local override." }] : []
     };
     return {
-      basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-09-23", bucket: "day", summary: estimate, points,
+      basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-10-07", bucket: "day", summary: estimate, points,
       models: models.map((item) => {
         const itemUsage = scaledUsage(usage, item.share);
         if (promo) return { key: item.key, usage: itemUsage, fast_share: fastShareOf(points), estimate: {} };
-        const unknown = item.key === "codex-auto-review" && !pricingOverrides[item.key];
+        const unknown = item.key === "internal-review" && !pricingOverrides[item.key];
         return { key: item.key, usage: itemUsage, estimate: { ...estimate, usd: unknown ? "0.000000000" : (totalCost * item.share).toFixed(9), priced_tokens: unknown ? 0 : itemUsage.total, unpriced_tokens: unknown ? itemUsage.total : 0, coverage_ratio: unknown ? 0 : 1, reasons: unknown ? estimate.reasons : [] } };
       })
     };
@@ -459,15 +461,15 @@
     return {
       basis: "current_standard_api_text_token_prices",
       currency: "USD",
-      catalog_as_of: "2026-09-23",
+      catalog_as_of: "2026-10-07",
       catalog,
       overrides: pricingOverrides,
-      unpriced_models: !diagnostics || pricingOverrides["codex-auto-review"] ? [] : [{ key: "codex-auto-review", usage: scaledUsage(baseUsage, .12), events: 9, sessions: 3 }]
+      unpriced_models: !diagnostics || pricingOverrides["internal-review"] ? [] : [{ key: "internal-review", usage: scaledUsage(baseUsage, .12), events: 9, sessions: 3 }]
     };
   }
 
   const promoUpdate = promo && params.get("update") === "available";
-  const demoUpdates = promo ? { current_version: "2.7.1", latest_version: promoUpdate ? "2.8.0" : "2.7.1", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: promoUpdate, can_install: true, phase: "idle", download_dir: "~/Downloads/codex-usage", default_download_dir: "~/Downloads/codex-usage", custom_download_dir: "", can_open_download_dir: false } : { current_version: "2.7.1-demo", latest_version: "2.7.1", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: false, can_install: false, phase: "idle", download_dir: "C:\\Users\\Demo\\Downloads\\codex-usage", default_download_dir: "C:\\Users\\Demo\\Downloads\\codex-usage", custom_download_dir: "", can_open_download_dir: false };
+  const demoUpdates = promo ? { current_version: "2.7.2", latest_version: promoUpdate ? "2.8.0" : "2.7.2", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: promoUpdate, can_install: true, phase: "idle", download_dir: "~/Downloads/codex-usage", default_download_dir: "~/Downloads/codex-usage", custom_download_dir: "", can_open_download_dir: false } : { current_version: "2.7.2-demo", latest_version: "2.7.2", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: false, can_install: false, phase: "idle", download_dir: "C:\\Users\\Demo\\Downloads\\codex-usage", default_download_dir: "C:\\Users\\Demo\\Downloads\\codex-usage", custom_download_dir: "", can_open_download_dir: false };
   async function syntheticFetch(input, init = {}) {
     const raw = typeof input === "string" ? input : input.url;
     const url = new URL(raw, root.location.href);
@@ -484,7 +486,7 @@
       return jsonResponse(demoUpdates);
     }
     if (endpoint === "/api/v1/status") return jsonResponse({
-      version: "2.7.1-demo", scanning: false,
+      version: "2.7.2-demo", scanning: false,
       status: {
         machine: promo ? { id: "workstation", label: "Workstation · Windows 11", hostname: "workstation", os: "windows", arch: "amd64" } : { id: "synthetic-machine", label: "Synthetic Windows · demo", hostname: "synthetic-host", os: "windows", arch: "amd64" },
         last_scan: now.toISOString(), accounting_mode: "jsonl_only", otel_active: false,

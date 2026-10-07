@@ -276,6 +276,17 @@ func evaluateEvent(event model.UsageEvent, overrides map[string]Override) (evalu
 		return out, nil
 	}
 	if usage.Input == 0 && usage.Output == 0 && total > 0 {
+		// Zero-cost usage needs no category split; explicit paid overrides still
+		// require one. Invalid/contradictory categories are rejected above.
+		rate, found, err := Resolve(modelName, overrides)
+		if err != nil {
+			return out, err
+		}
+		if found && rate.InputNanoPerToken == 0 && rate.CachedNanoPerToken == 0 &&
+			rate.CacheWriteNanoPerToken != nil && *rate.CacheWriteNanoPerToken == 0 && rate.OutputNanoPerToken == 0 {
+			out.pricedTokens = total
+			return out, nil
+		}
 		out.unpricedTokens = total
 		out.reasons = append(out.reasons, UnpricedReason{
 			Kind: "missing_token_categories", Model: modelName, Tokens: total,

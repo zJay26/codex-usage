@@ -24,6 +24,7 @@ func TestResolveGPT6SolAndLunaPricing(t *testing.T) {
 		input, cached, cacheWrite, output int64
 	}{
 		{"gpt-6-sol", 2000, 200, 2500, 10000},
+		{"gpt-6.1-sol", 2000, 100, 2500, 10000},
 		{"gpt-6-luna", 100, 10, 125, 500},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -66,13 +67,17 @@ func TestResolveBuiltInAndVersionedSnapshot(t *testing.T) {
 
 func TestEveryCatalogModelAndSnapshotPatternResolvesExactly(t *testing.T) {
 	for _, entry := range Catalog() {
-		for _, name := range []string{entry.Model, entry.Model + "-2026-07-31"} {
+		names := []string{entry.Model}
+		if len(entry.SnapshotPatterns) > 0 {
+			names = append(names, entry.Model+"-2026-07-31")
+		}
+		for _, name := range names {
 			rate, ok, err := Resolve(name, nil)
 			if err != nil || !ok || rate.CanonicalModel != entry.Model {
 				t.Fatalf("%q did not resolve to %q: rate=%#v ok=%v err=%v", name, entry.Model, rate, ok, err)
 			}
 		}
-		if len(entry.SnapshotPatterns) == 0 {
+		if len(entry.SnapshotPatterns) == 0 && entry.Model != "codex-auto-review" {
 			t.Fatalf("catalog entry %q does not publish its snapshot pattern", entry.Model)
 		}
 	}
@@ -146,7 +151,7 @@ func TestNormalizeOverridesRejectsInvalidValues(t *testing.T) {
 }
 
 func TestModelMatchingDoesNotGuessFamilies(t *testing.T) {
-	for _, name := range []string{"gpt-6", "gpt-6-sol-preview", "gpt-6-luna-turbo", "gpt-6-luna-2026-02-30", "gpt-5.6-turbo", "gpt-5.4-pro", "codex-auto-review", ""} {
+	for _, name := range []string{"gpt-6", "gpt-6-sol-preview", "gpt-6-luna-turbo", "gpt-6-luna-2026-02-30", "gpt-5.6-turbo", "gpt-5.4-pro", "gpt-6.1-sol-preview", "codex-auto-review-2026-10-07", "internal-review", ""} {
 		if _, ok, err := Resolve(name, nil); err != nil || ok {
 			t.Fatalf("model %q should remain unpriced, ok=%v err=%v", name, ok, err)
 		}

@@ -142,13 +142,28 @@ test("synthetic demo supports minute ranges with matching summary and daily tota
   await expect(page.locator("#customRangeError")).toBeHidden();
 });
 
+test("synthetic Auto-review stays zero-priced in regular and Fast modes", async ({ page }) => {
+  await page.goto(`${baseURL}?lang=en`, { waitUntil: "networkidle" });
+  const reports = await page.evaluate(async () => Promise.all(["", "&cost_basis=codex_fast_weighted"].map(async (basis) => {
+    const response = await fetch(`api/v1/cost-estimate?model=codex-auto-review&mode=fast${basis}`);
+    return response.json();
+  })));
+  for (const report of reports) {
+    expect(report.summary.usd).toBe("0.000000000");
+    expect(report.summary.priced_tokens).toBeGreaterThan(0);
+    expect(report.summary.unpriced_tokens).toBe(0);
+    expect(report.summary.coverage_ratio).toBe(1);
+  }
+});
+
 test("synthetic catalog supports GPT-6 aliases and Fast estimates", async ({ page }) => {
   await page.goto(`${baseURL}?lang=en&scenario=diagnostics`, { waitUntil: "networkidle" });
   await page.locator("#pricingButton").click();
   await page.locator(".catalog-disclosure summary").click();
-  const card = page.locator('[data-pricing-model="codex-auto-review"]');
+  const card = page.locator('[data-pricing-model="internal-review"]');
   await card.locator("[data-rate-mode]").selectOption("alias");
   for (const item of [
+    { model: "gpt-6.1-sol", display: "GPT-6.1 Sol", rates: ["2.00", "0.10", "2.50", "10.00"] },
     { model: "gpt-6-sol", display: "GPT-6 Sol", rates: ["2.00", "0.20", "2.50", "10.00"] },
     { model: "gpt-6-luna", display: "GPT-6 Luna", rates: ["0.10", "0.01", "0.125", "0.50"] }
   ]) {
@@ -157,9 +172,9 @@ test("synthetic catalog supports GPT-6 aliases and Fast estimates", async ({ pag
     await card.locator("[data-alias]").selectOption(item.model);
     await expect(card.locator("[data-alias]")).toHaveValue(item.model);
     const result = await page.evaluate(async (model) => {
-      await fetch("api/v1/pricing/overrides", { method: "PUT", body: JSON.stringify({ overrides: { "codex-auto-review": { alias_of: model } } }) });
-      const base = await (await fetch("api/v1/cost-estimate?model=codex-auto-review&mode=fast")).json();
-      const fast = await (await fetch("api/v1/cost-estimate?model=codex-auto-review&mode=fast&cost_basis=codex_fast_weighted")).json();
+      await fetch("api/v1/pricing/overrides", { method: "PUT", body: JSON.stringify({ overrides: { "internal-review": { alias_of: model } } }) });
+      const base = await (await fetch("api/v1/cost-estimate?model=internal-review&mode=fast")).json();
+      const fast = await (await fetch("api/v1/cost-estimate?model=internal-review&mode=fast&cost_basis=codex_fast_weighted")).json();
       return { base: base.summary, fast: fast.summary };
     }, item.model);
     expect(Number(result.base.usd)).toBeGreaterThan(0);
@@ -182,9 +197,9 @@ test("language priority, persistence, ARIA, pricing, scan, theme, and mobile lay
   expect(new URL(page.url()).searchParams.get("lang")).toBe("zh-CN");
 
   await page.locator("#pricingButton").click();
-  await page.locator("#newOverrideModel").fill("codex-auto-review");
+  await page.locator("#newOverrideModel").fill("internal-review");
   await page.locator("#addOverride").click();
-  const card = page.locator('[data-pricing-model="codex-auto-review"]');
+  const card = page.locator('[data-pricing-model="internal-review"]');
   await card.locator("[data-rate-mode]").selectOption("alias");
   await card.locator("[data-alias]").selectOption("gpt-5.4");
   await page.locator("#savePricing").click();

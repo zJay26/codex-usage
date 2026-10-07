@@ -191,15 +191,16 @@ Display settings in the header use a more comfortable type scale by default and 
 
 ### API-equivalent cost
 
-The Dashboard shows regular, Fast, and all tokens, with a mode filter. Raw Fast tokens are never multiplied. Fast cost uses Standard base rates multiplied by ChatGPT Codex credit factors: 2.5 for Astra, the GPT-5.6 family, and GPT-5.5; 2 for GPT-5.4. Models without a confirmed factor remain unpriced. History is classified only from explicit evidence for the same turn; unconfirmed usage is provisionally regular. See the [Fast accounting, backfill, and API guide (Chinese)](docs/fast-mode-accounting.md).
+The Dashboard shows regular, Fast, and all tokens, with a mode filter. Raw Fast tokens are never multiplied. Fast cost uses Standard base rates multiplied by ChatGPT Codex credit factors: 2.5 for GPT-6.1 Sol, GPT-6 Astra/Sol/Luna, the GPT-5.6 family, and GPT-5.5; 2 for GPT-5.4. Models without a confirmed factor remain unpriced. History is classified only from explicit evidence for the same turn; unconfirmed usage is provisionally regular. See the [Fast accounting, backfill, and API guide (Chinese)](docs/fast-mode-accounting.md).
 
 The estimator streams the normalized events that already passed source de-duplication and attribution filtering. It runs at query time, writes no cost data to SQLite, and leaves existing token totals unchanged. Arithmetic uses fixed-point nano-USD. Cached Input and Cache Write are removed from regular Input, and Reasoning is already included in Output, so neither is charged twice.
 
-The bundled Standard text price catalog was updated on **2026-09-23**. All values are USD / 1M tokens:
+The bundled Standard text price catalog was updated on **2026-10-07**. All values are USD / 1M tokens:
 
 | Model | Input | Cached | Cache Write | Output |
 |---|---:|---:|---:|---:|
 | [GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra) | 10.00 | 1.00 | 12.50 | 50.00 |
+| [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol) | 2.00 | 0.10 | 2.50 | 10.00 |
 | [GPT-6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol) | 2.00 | 0.20 | 2.50 | 10.00 |
 | [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna) | 0.10 | 0.01 | 0.125 | 0.50 |
 | [GPT-5.6 Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol) | 5.00 | 0.50 | 6.25 | 30.00 |
@@ -211,14 +212,16 @@ The bundled Standard text price catalog was updated on **2026-09-23**. All value
 | [GPT-5.3-Codex](https://developers.openai.com/api/docs/models/gpt-5.3-codex) | 1.75 | 0.175 | not published | 14.00 |
 | [GPT-5.2-Codex](https://developers.openai.com/api/docs/models/gpt-5.2-codex) | 1.75 | 0.175 | not published | 14.00 |
 
-GPT-6 Astra/Sol/Luna and GPT-5.6 Cache Write use the official 1.25× regular Input rule. Local JSONL stores cumulative token activity and cannot reliably reconstruct the per-request boundaries used for API billing. The estimator uses the Standard base rates above, adjusts explicitly identified Fast usage, and does not infer long-context multipliers. The UI always shows estimated cost together with token pricing coverage; unknown models are never treated as zero-cost.
+GPT-6.1 Sol, GPT-6 Astra/Sol/Luna and GPT-5.6 Cache Write use the official 1.25× regular Input rule. Local JSONL stores cumulative token activity and cannot reliably reconstruct the per-request boundaries used for API billing. The estimator uses the Standard base rates above, adjusts explicitly identified Fast usage, and does not infer long-context multipliers. The UI always shows estimated cost together with token pricing coverage; unknown models are never treated as zero-cost.
+
+Separate `codex-auto-review` usage defaults to zero cost while retaining token counts. This local accounting policy follows the Tibo statement reported by the maintainer; as of 2026-10-07, an explicit official public free-pricing statement has not been verified. It is not a published API price. Existing manual overrides still take precedence; remove that override to restore zero pricing. Only this exact model ID is covered: enabling Auto-review does not make main-model usage free. Historical estimates also use the current policy.
 
 Internal models can be explicitly mapped to one built-in public model or assigned custom rates in the Dashboard. Overrides take effect without restarting:
 
 ```json
 {
   "pricing_overrides": {
-    "codex-auto-review": { "alias_of": "gpt-5.6-luna" },
+    "internal-review": { "alias_of": "gpt-6.1-sol" },
     "internal-model": {
       "input_usd_per_million": "1.00",
       "cached_input_usd_per_million": "0.10",
