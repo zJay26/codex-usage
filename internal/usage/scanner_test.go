@@ -452,7 +452,7 @@ func TestStateIndexOmittedRowStillSupplementsSessionDirectory(t *testing.T) {
 	}
 	db.Close()
 	discovery := DiscoverHome(context.Background(), home)
-	if len(discovery.Paths) != 2 || discovery.Warning == "" {
+	if len(discovery.Paths) != 2 || discovery.Warning != "" {
 		t.Fatalf("state omission was not supplemented: %+v", discovery)
 	}
 }

@@ -469,7 +469,7 @@
   }
 
   const promoUpdate = promo && params.get("update") === "available";
-  const demoUpdates = promo ? { current_version: "2.7.2", latest_version: promoUpdate ? "2.8.0" : "2.7.2", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: promoUpdate, can_install: true, phase: "idle", download_dir: "~/Downloads/codex-usage", default_download_dir: "~/Downloads/codex-usage", custom_download_dir: "", can_open_download_dir: false } : { current_version: "2.7.2-demo", latest_version: "2.7.2", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: false, can_install: false, phase: "idle", download_dir: "C:\\Users\\Demo\\Downloads\\codex-usage", default_download_dir: "C:\\Users\\Demo\\Downloads\\codex-usage", custom_download_dir: "", can_open_download_dir: false };
+  const demoUpdates = promo ? { current_version: "2.7.3", latest_version: promoUpdate ? "2.8.0" : "2.7.3", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: promoUpdate, can_install: true, phase: "idle", download_dir: "~/Downloads/codex-usage", default_download_dir: "~/Downloads/codex-usage", custom_download_dir: "", can_open_download_dir: false } : { current_version: "2.7.3-demo", latest_version: "2.7.3", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: false, can_install: false, phase: "idle", download_dir: "C:\\Users\\Demo\\Downloads\\codex-usage", default_download_dir: "C:\\Users\\Demo\\Downloads\\codex-usage", custom_download_dir: "", can_open_download_dir: false };
   async function syntheticFetch(input, init = {}) {
     const raw = typeof input === "string" ? input : input.url;
     const url = new URL(raw, root.location.href);
@@ -486,7 +486,7 @@
       return jsonResponse(demoUpdates);
     }
     if (endpoint === "/api/v1/status") return jsonResponse({
-      version: "2.7.2-demo", scanning: false,
+      version: "2.7.3-demo", scanning: false,
       status: {
         machine: promo ? { id: "workstation", label: "Workstation · Windows 11", hostname: "workstation", os: "windows", arch: "amd64" } : { id: "synthetic-machine", label: "Synthetic Windows · demo", hostname: "synthetic-host", os: "windows", arch: "amd64" },
         last_scan: now.toISOString(), accounting_mode: "jsonl_only", otel_active: false,

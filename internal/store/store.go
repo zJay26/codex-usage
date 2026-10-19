@@ -1028,13 +1028,57 @@ func (s *Store) ClearResolvedFileWarnings(ctx context.Context, path string) erro
 	return err
 }
 
-func (s *Store) UpdateScanState(ctx context.Context, home, stateDB string, files int64, warning string) error {
-	_, err := s.writer().ExecContext(ctx, `INSERT INTO scan_state(
+// UpdateScanState reconciles discovery warnings only after a successful scan.
+// It also replaces legacy state_schema rows and warnings for a previous state
+// database in this home, without touching record-level accounting warnings.
+func (s *Store) UpdateScanState(ctx context.Context, home, stateDB string, files int64, warningKind, warning string) error {
+	db, commit, rollback, err := s.beginWrite(ctx)
+	if err != nil {
+		return err
+	}
+	defer rollback()
+	deleted, err := db.ExecContext(ctx, `DELETE FROM warnings
+		WHERE kind IN ('state_schema','state_rollout_missing')
+		AND (path=? OR path=(SELECT state_db FROM scan_state WHERE codex_home=?))
+		AND (path<>? OR kind<>? OR ?='')`, stateDB, home, stateDB, warningKind, warning)
+	if err != nil {
+		return err
+	}
+	changed, err := deleted.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if warning != "" {
+		now := time.Now().Unix()
+		fp := hashString(warningKind + "\x00" + stateDB + "\x00" + warning)
+		updated, err := db.ExecContext(ctx, `INSERT INTO warnings(
+			created_at,first_seen,occurrences,kind,path,detail,fingerprint) VALUES(?,?,?,?,?,?,?)
+			ON CONFLICT(kind,path) DO UPDATE SET created_at=excluded.created_at,
+			occurrences=warnings.occurrences+1,
+			detail=excluded.detail,fingerprint=excluded.fingerprint
+			WHERE warnings.detail<>excluded.detail`, now, now, 1, warningKind, stateDB, warning, fp)
+		if err != nil {
+			return err
+		}
+		count, err := updated.RowsAffected()
+		if err != nil {
+			return err
+		}
+		changed += count
+	}
+	if changed > 0 {
+		if _, err := db.ExecContext(ctx, `UPDATE meta SET value=CAST(value AS INTEGER)+1 WHERE key='data_revision'`); err != nil {
+			return err
+		}
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO scan_state(
 		codex_home,last_scan,state_db,files_scanned,warning) VALUES(?,?,?,?,?)
 		ON CONFLICT(codex_home) DO UPDATE SET last_scan=excluded.last_scan,
 		state_db=excluded.state_db,files_scanned=excluded.files_scanned,warning=excluded.warning`,
-		home, time.Now().Unix(), stateDB, files, warning)
-	return err
+		home, time.Now().Unix(), stateDB, files, warning); err != nil {
+		return err
+	}
+	return commit()
 }
 
 func (s *Store) Summary(ctx context.Context, filter model.Filter) (model.Summary, error) {
