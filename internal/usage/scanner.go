@@ -55,12 +55,13 @@ type ScanResult struct {
 }
 
 type HomeDiscovery struct {
-	Home     string
-	StateDB  string
-	Sessions []model.SessionInfo
-	Paths    []string
-	Fallback bool
-	Warning  string
+	Home        string
+	StateDB     string
+	Sessions    []model.SessionInfo
+	Paths       []string
+	Fallback    bool
+	WarningKind string
+	Warning     string
 }
 
 func (s *Scanner) Scan(ctx context.Context, homes []string, rebuild bool) (ScanResult, error) {
@@ -125,7 +126,6 @@ func (s *Scanner) scanPass(ctx context.Context, homes []string) (ScanResult, err
 		}
 		if discovery.Warning != "" {
 			result.Warnings++
-			_ = s.Store.AddWarning(ctx, "state_schema", discovery.StateDB, discovery.Warning)
 		}
 
 		metadata := make(map[string]model.SessionInfo, len(discovery.Sessions))
@@ -181,7 +181,7 @@ func (s *Scanner) scanPass(ctx context.Context, homes []string) (ScanResult, err
 			}
 		}
 
-		if err := s.Store.UpdateScanState(ctx, home, discovery.StateDB, files, discovery.Warning); err != nil {
+		if err := s.Store.UpdateScanState(ctx, home, discovery.StateDB, files, discovery.WarningKind, discovery.Warning); err != nil {
 			return result, err
 		}
 	}
@@ -1038,55 +1038,119 @@ func DiscoverHome(ctx context.Context, home string) HomeDiscovery {
 		sessions, err := store.ReadStateThreads(ctx, out.StateDB, home)
 		if err == nil {
 			seen := map[string]bool{}
+			byName := map[string][]string{}
+			for _, candidate := range directoryPaths {
+				key := rolloutName(candidate)
+				byName[key] = append(byName[key], candidate)
+			}
 			missing := 0
 			for index, session := range sessions {
 				if session.RolloutPath == "" {
 					continue
 				}
-				if !filepath.IsAbs(session.RolloutPath) {
-					session.RolloutPath = filepath.Join(home, session.RolloutPath)
-				}
-				abs, err := canonicalPath(session.RolloutPath)
-				if err != nil || seen[pathKey(abs)] {
-					continue
-				}
-				sessions[index].RolloutPath = abs
-				seen[pathKey(abs)] = true
-				info, statErr := os.Stat(abs)
-				if statErr != nil || info.IsDir() {
+				resolved := resolveStateRollout(ctx, home, session, byName)
+				if resolved == "" {
 					missing++
 					continue
 				}
-				out.Paths = append(out.Paths, abs)
+				sessions[index].RolloutPath = resolved
+				key := pathKey(resolved)
+				if !seen[key] {
+					seen[key] = true
+					out.Paths = append(out.Paths, resolved)
+				}
 			}
 			out.Sessions = sessions
-			extras := 0
 			for _, candidate := range directoryPaths {
 				key := pathKey(candidate)
-				if seen[key] {
-					continue
+				if !seen[key] {
+					seen[key] = true
+					out.Paths = append(out.Paths, candidate)
 				}
-				seen[key] = true
-				extras++
-				out.Paths = append(out.Paths, candidate)
 			}
-			switch {
-			case missing > 0 && extras > 0:
-				out.Warning = fmt.Sprintf("状态库有 %d 个 rollout_path 不可读且漏列 %d 个 JSONL；已用 sessions 目录补充", missing, extras)
-			case missing > 0:
-				out.Warning = fmt.Sprintf("状态库有 %d 个 rollout_path 不可读；已检查 sessions 目录", missing)
-			case extras > 0:
-				out.Warning = fmt.Sprintf("状态库漏列 %d 个 JSONL；已用 sessions 目录补充", extras)
+			// Codex's state index can lag behind new or archived rollouts. The
+			// directory union is authoritative for discovery; supplementation is
+			// not a schema failure or an accounting gap.
+			if missing > 0 {
+				out.WarningKind = "state_rollout_missing"
+				out.Warning = fmt.Sprintf("状态库中 %d 条记录的 JSONL 仍不可用；已检查 sessions 与 archived_sessions 并尝试匹配搬迁路径。现有统计已保留，请核对 Codex Home 或从备份恢复源文件；重建无法恢复已删除的 JSONL。", missing)
 			}
 			sort.Strings(out.Paths)
 			return out
 		} else {
+			out.WarningKind = "state_schema"
 			out.Warning = err.Error()
 		}
 	}
 	out.Fallback = true
 	out.Paths = directoryPaths
 	return out
+}
+
+// rolloutName accepts state paths from another OS after a home is copied.
+func rolloutName(path string) string {
+	parts := strings.Split(strings.ReplaceAll(path, `\`, "/"), "/")
+	return strings.ToLower(parts[len(parts)-1])
+}
+
+func resolveStateRollout(ctx context.Context, home string, session model.SessionInfo, byName map[string][]string) string {
+	path := stripExtendedPath(session.RolloutPath)
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(home, path)
+	}
+	if abs, err := canonicalPath(path); err == nil {
+		if info, err := os.Stat(abs); err == nil && !info.IsDir() {
+			return abs
+		}
+	}
+	// A matching filename alone must never attach another session's metadata.
+	// Only a unique candidate whose first session_meta owns this ID is safe.
+	if session.SessionID == "" {
+		return ""
+	}
+	var matched string
+	for _, candidate := range byName[rolloutName(session.RolloutPath)] {
+		if rolloutOwner(ctx, candidate) != session.SessionID {
+			continue
+		}
+		if matched != "" && !samePath(matched, candidate) {
+			return ""
+		}
+		matched = candidate
+	}
+	return matched
+}
+
+// Read a bounded prefix, never a full transcript or a copied parent metadata
+// record later in a fork. Incomplete or unverified headers remain unresolved.
+func rolloutOwner(ctx context.Context, path string) string {
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	reader := bufio.NewReaderSize(io.LimitReader(file, 1<<20), 64<<10)
+	for ctx.Err() == nil {
+		record, _, complete, tooLarge, err := readSelectiveRecord(reader, 1<<20)
+		if !complete || err != nil {
+			return ""
+		}
+		if tooLarge || len(record) == 0 {
+			continue
+		}
+		var env envelope
+		if json.Unmarshal(record, &env) != nil {
+			return ""
+		}
+		if env.Type == "session_meta" {
+			var payload sessionMetaPayload
+			if json.Unmarshal(env.Payload, &payload) == nil {
+				return firstNonEmpty(payload.ID, payload.SessionID)
+			}
+			return ""
+		}
+	}
+	return ""
 }
 
 func walkRollouts(home string) []string {

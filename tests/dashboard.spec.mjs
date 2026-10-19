@@ -928,3 +928,25 @@ test("GPT-6.1 Sol and Auto-review pricing agree across the catalog, summary and 
   expect(resetSessions.items[0].estimate.usd).toBe("0.000000000");
   expect(resetSessions.items[0].estimate.priced_tokens).toBe(1100);
 });
+
+test("discovery warnings explain unavailable sources in both locales", async ({ page }) => {
+  await page.route("**/api/v1/status", async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json();
+    payload.status.warning_count = 2;
+    await route.fulfill({ response, json: payload });
+  });
+  await page.route("**/api/v1/warnings?*", (route) => route.fulfill({ json: { items: [
+    { kind: "state_rollout_missing", detail: "Some JSONL files are unavailable", occurrences: 1 },
+    { kind: "state_schema", detail: "Cannot read state index", occurrences: 1 }
+  ] } }));
+  for (const [locale, missing, schema] of [
+    ["zh-CN", "部分会话源文件不可用，请核对路径或备份", "Codex 状态库无法读取，已改用目录扫描"],
+    ["en", "Some session files are unavailable; check paths or backups", "Codex state index unavailable; scanning directories"]
+  ]) {
+    await page.goto(`${baseURL}/?lang=${locale}`, { waitUntil: "networkidle" });
+    await page.locator("#warningButton").click();
+    await expect(page.locator("#warningList code")).toHaveText([missing, schema]);
+    await expect(page.locator("#warningList .warning-row")).toHaveCount(2);
+  }
+});
