@@ -95,6 +95,7 @@ func buildTaskTree(rows []store.SessionRow, metadata map[string]model.SessionInf
 		if p := nodes[n.ParentID]; p != nil {
 			p.SubtreeUsage = p.SubtreeUsage.Add(n.SubtreeUsage)
 			p.SubtreeModes.Fast = p.SubtreeModes.Fast.Add(n.SubtreeModes.Fast)
+			p.SubtreeModes.Ultrafast = p.SubtreeModes.Ultrafast.Add(n.SubtreeModes.Ultrafast)
 			p.SubtreeModes.Unknown = p.SubtreeModes.Unknown.Add(n.SubtreeModes.Unknown)
 			p.SubtreeModes.Complete(p.SubtreeUsage)
 			if n.LastUsage.After(p.LastUsage) {

@@ -199,6 +199,14 @@ func Load(paths Paths) (Config, error) {
 		cfg.ScanIntervalSeconds = 600
 	}
 	cfg.ExtraCodexHomes = cleanHomes(cfg.ExtraCodexHomes)
+	// Before these IDs had public rates, users could save custom prices or
+	// aliases for them. Use the new catalog without rejecting their config.
+	for name := range cfg.PricingOverrides {
+		rate, found, _ := pricing.Resolve(name, nil)
+		if found && (rate.CanonicalModel == "gpt-6.2-sol" || rate.CanonicalModel == "gpt-6.2-astra") {
+			delete(cfg.PricingOverrides, name)
+		}
+	}
 	cfg.PricingOverrides, err = pricing.NormalizeOverrides(cfg.PricingOverrides)
 	if err != nil {
 		return Config{}, fmt.Errorf("无效 pricing_overrides: %w", err)

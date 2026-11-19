@@ -26,7 +26,8 @@ func TestDiagnosticModeParser(t *testing.T) {
 	}{
 		{`Some(Some("priority"))`, model.ModeFast, true}, {`Some(Some("fast"))`, model.ModeFast, true},
 		{`Some(Some("default"))`, model.ModeStandard, true}, {`Some(None)`, model.ModeStandard, true},
-		{`None`, "", false}, {`Some(Some("ultrafast"))`, model.ModeUnknown, true},
+		{`None`, "", false}, {`Some(Some("ultrafast"))`, model.ModeUltrafast, true},
+		{`Some(Some("unrecognized"))`, model.ModeUnknown, true},
 	} {
 		t.Run(tt.tier, func(t *testing.T) {
 			turn, m, ok := parseDiagnosticMode(diagnosticFixture("turn", tt.tier))
@@ -40,7 +41,7 @@ func TestDiagnosticModeParser(t *testing.T) {
 			t.Fatalf("accepted unsupported submission: %s", body)
 		}
 	}
-	for _, tt := range []struct{ setting, want string }{{`None`, model.ModeFast}, {`Some(Some("priority"))`, model.ModeFast}, {`Some(None)`, model.ModeUnknown}} {
+	for _, tt := range []struct{ setting, want string }{{`None`, model.ModeFast}, {`Some(Some("priority"))`, model.ModeFast}, {`Some(Some("ultrafast"))`, model.ModeUnknown}, {`Some(None)`, model.ModeUnknown}} {
 		body := strings.Replace(diagnosticFixture("turn", tt.setting), "start: TurnStartOptions { service_tier: None }", `start: TurnStartOptions { service_tier: Some(Some("priority")) }`, 1)
 		turn, mode, ok := parseDiagnosticMode(body)
 		if !ok || turn != "turn" || mode.ServiceMode != tt.want {

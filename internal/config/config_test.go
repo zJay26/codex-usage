@@ -286,6 +286,30 @@ func TestMigratePreviousStateArchivesParallelConfigAndBackups(t *testing.T) {
 	}
 }
 
+func TestLoadOverridesFromBeforeGPT62Pricing(t *testing.T) {
+	dir := t.TempDir()
+	paths := Paths{StateDir: dir, ConfigPath: filepath.Join(dir, "config.json")}
+	const previous = `{"pricing_overrides":{
+		" GPT-6.2-SOL ":{"alias_of":"gpt-6.1-sol"},
+		"gpt-6.2-astra-2026-11-17":{"alias_of":"gpt-6-astra"},
+		"my-model":{"alias_of":"gpt-6.1-sol"}
+	}}`
+	if err := os.WriteFile(paths.ConfigPath, []byte(previous), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.PricingOverrides) != 1 || cfg.PricingOverrides["my-model"].AliasOf != "gpt-6.1-sol" {
+		t.Fatalf("unrelated overrides changed: %+v", cfg.PricingOverrides)
+	}
+	data, err := os.ReadFile(paths.ConfigPath)
+	if err != nil || string(data) != previous {
+		t.Fatalf("loading rewrote the user's config: %v", err)
+	}
+}
+
 func TestPricingOverridesRoundTripWithoutChangingOtherSettings(t *testing.T) {
 	stateDir := t.TempDir()
 	paths := Paths{StateDir: stateDir, ConfigPath: filepath.Join(stateDir, "config.json")}

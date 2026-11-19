@@ -11,11 +11,19 @@ import (
 	"github.com/zJay26/codex-usage/internal/model"
 )
 
+// Keep the Fast aggregate inclusive for existing consumers. Ultrafast is
+// also returned separately so exact Fast and Ultrafast can be compared.
+var modeBuckets = []struct{ name, predicate string }{
+	{"fast", "e.service_mode IN ('fast','ultrafast')"},
+	{"ultrafast", "e.service_mode='ultrafast'"},
+	{"unknown", "e.service_mode='unknown'"},
+}
+
 var modeUsageSQL = func() string {
 	var columns []string
-	for _, mode := range []string{"fast", "unknown"} {
+	for _, bucket := range modeBuckets {
 		for _, column := range []string{"input_tokens", "cached_input_tokens", "cache_write_input_tokens", "output_tokens", "reasoning_output_tokens", "total_tokens"} {
-			columns = append(columns, "COALESCE(SUM(CASE WHEN e.service_mode='"+mode+"' THEN e."+column+" ELSE 0 END),0)")
+			columns = append(columns, "COALESCE(SUM(CASE WHEN "+bucket.predicate+" THEN e."+column+" ELSE 0 END),0)")
 		}
 	}
 	return strings.Join(columns, ",")
@@ -23,10 +31,11 @@ var modeUsageSQL = func() string {
 
 func modeUsageDest(m *model.ModeUsage) []any {
 	return []any{&m.Fast.Input, &m.Fast.CachedInput, &m.Fast.CacheWriteInput, &m.Fast.Output, &m.Fast.ReasoningOutput, &m.Fast.Total,
+		&m.Ultrafast.Input, &m.Ultrafast.CachedInput, &m.Ultrafast.CacheWriteInput, &m.Ultrafast.Output, &m.Ultrafast.ReasoningOutput, &m.Ultrafast.Total,
 		&m.Unknown.Input, &m.Unknown.CachedInput, &m.Unknown.CacheWriteInput, &m.Unknown.Output, &m.Unknown.ReasoningOutput, &m.Unknown.Total}
 }
 
-func migrateServiceModes(ctx context.Context, tx *sql.Tx) error {
+func migrateServiceModes(ctx context.Context, tx *sql.Tx, version int) error {
 	for _, stmt := range []string{
 		`CREATE TABLE IF NOT EXISTS mode_file_backfills (path TEXT PRIMARY KEY)`,
 		`ALTER TABLE usage_events ADD COLUMN service_mode TEXT NOT NULL DEFAULT 'unknown'`,
@@ -49,6 +58,16 @@ func migrateServiceModes(ctx context.Context, tx *sql.Tx) error {
 	} {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
 			return err
+		}
+	}
+	if version > 0 && version < 12 {
+		// Older ledgers retained the literal tier even when the mode was unknown.
+		for _, table := range []string{"turn_service_modes", "usage_events"} {
+			if _, err := tx.ExecContext(ctx, `UPDATE `+table+` SET service_mode='ultrafast'
+				WHERE service_mode='unknown' AND lower(trim(service_tier))='ultrafast'
+				AND mode_source IN ('jsonl_turn_context','diagnostic_turn_input')`); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

@@ -23,6 +23,8 @@
   const catalog = [
     { model: "codex-auto-review", display_name: "Codex Auto-review", input_usd_per_million: "0.00", cached_input_usd_per_million: "0.00", cache_write_input_usd_per_million: "0.00", output_usd_per_million: "0.00", source: "" },
     { model: "gpt-6-astra", display_name: "GPT-6 Astra", input_usd_per_million: "10.00", cached_input_usd_per_million: "1.00", cache_write_input_usd_per_million: "12.50", output_usd_per_million: "50.00", source: "#synthetic-pricing" },
+    { model: "gpt-6.2-astra", display_name: "GPT-6.2 Astra", input_usd_per_million: "8.00", cached_input_usd_per_million: "0.40", cache_write_input_usd_per_million: "10.00", output_usd_per_million: "40.00", source: "#synthetic-pricing" },
+    { model: "gpt-6.2-sol", display_name: "GPT-6.2 Sol", input_usd_per_million: "2.00", cached_input_usd_per_million: "0.10", cache_write_input_usd_per_million: "2.50", output_usd_per_million: "10.00", source: "#synthetic-pricing" },
     { model: "gpt-6.1-sol", display_name: "GPT-6.1 Sol", input_usd_per_million: "2.00", cached_input_usd_per_million: "0.10", cache_write_input_usd_per_million: "2.50", output_usd_per_million: "10.00", source: "#synthetic-pricing" },
     { model: "gpt-6-sol", display_name: "GPT-6 Sol", input_usd_per_million: "2.00", cached_input_usd_per_million: "0.20", cache_write_input_usd_per_million: "2.50", output_usd_per_million: "10.00", source: "#synthetic-pricing" },
     { model: "gpt-6-luna", display_name: "GPT-6 Luna", input_usd_per_million: "0.10", cached_input_usd_per_million: "0.01", cache_write_input_usd_per_million: "0.125", output_usd_per_million: "0.50", source: "#synthetic-pricing" },
@@ -36,9 +38,9 @@
     { key: "gpt-6-luna", share: .13, events: 2_740, sessions: 121 },
     { key: "gpt-5.6-terra", share: .08, events: 1_242, sessions: 37 }
   ] : [
-    { key: diagnostics ? "gpt-5.4" : "gpt-6-sol", share: .57, events: 71, sessions: 15 },
-    { key: diagnostics ? "gpt-5.6-terra" : "gpt-6-astra", share: .31, events: 32, sessions: 8 },
-    { key: diagnostics ? "internal-review" : "gpt-6-luna", share: .12, events: 11, sessions: 3 }
+    { key: diagnostics ? "gpt-5.4" : "gpt-6.2-sol", share: .57, events: 71, sessions: 15 },
+    { key: diagnostics ? "gpt-5.6-terra" : "gpt-6.2-astra", share: .31, events: 32, sessions: 8 },
+    { key: diagnostics ? "internal-review" : "gpt-6.1-sol", share: .12, events: 11, sessions: 3 }
   ];
   const agents = promo ? [
     { key: "main", share: .71, events: 12_380, sessions: 214 },
@@ -107,6 +109,7 @@
   const usageKeys = ["input", "cached_input", "cache_write_input", "output", "reasoning_output", "total"];
   const zeroUsage = () => Object.fromEntries(usageKeys.map((key) => [key, 0]));
   const addUsage = (a, b) => Object.fromEntries(usageKeys.map((key) => [key, (a[key] || 0) + (b[key] || 0)]));
+  const subtractUsage = (a, b) => Object.fromEntries(usageKeys.map((key) => [key, a[key] - b[key]]));
   // ---- Promo ledger -------------------------------------------------------
   // Usage is generated hour by hour from a deterministic workday rhythm, so every
   // view (range totals, daily bars, hours, calendar, breakdowns) agrees exactly.
@@ -194,18 +197,27 @@
     for (const item of roots.slice(0, 8)) threads.push({ key: item.title, share: item.tokens / rootTotal * .8, events: Math.round(item.tokens / 190_000), sessions: 1 + sessions.filter((child) => child.parent === item.session_id).length });
   }
 
-  function modeUsage(usage, mode, share = .25) {
+  const fastFactors = { "gpt-6.2-astra": 2, "gpt-6.2-sol": 2, "gpt-6-astra": 2.5, "gpt-6.1-sol": 2.5, "gpt-6-sol": 2.5, "gpt-6-luna": 2.5, "gpt-5.6-sol": 2.5, "gpt-5.6-terra": 2.5, "gpt-5.6-luna": 2.5, "gpt-5.5": 2.5, "gpt-5.4": 2 };
+  const ultraFactors = { "gpt-6.2-astra": 6, "gpt-6.2-sol": 6, "gpt-6-astra": 8, "gpt-6.1-sol": 8 };
+
+  function modeUsage(usage, mode, share, model) {
     const fast = scaledUsage(usage, share);
     fast.total = fast.input + fast.output;
-    const regular = Object.fromEntries(usageKeys.map((key) => [key, usage[key] - fast[key]]));
+    const hasUltra = !promo && (model ? Object.hasOwn(ultraFactors, model) : !diagnostics);
+    const ultrafast = hasUltra ? scaledUsage(fast, .2) : zeroUsage();
+    ultrafast.total = ultrafast.input + ultrafast.output;
+    const regular = subtractUsage(usage, fast);
     const unknown = promo ? zeroUsage() : scaledUsage(regular, .2); unknown.total = unknown.input + unknown.output;
-    if (mode === "fast") return { regular: zeroUsage(), fast, unknown: zeroUsage() };
-    if (mode === "regular") return { regular, fast: zeroUsage(), unknown };
-    if (mode === "unknown") return { regular: unknown, fast: zeroUsage(), unknown };
-    return { regular, fast, unknown };
+    const empty = { regular: zeroUsage(), fast: zeroUsage(), ultrafast: zeroUsage(), unknown: zeroUsage() };
+    if (mode === "fast") return { ...empty, fast, ultrafast };
+    if (mode === "fast_only") return { ...empty, fast: subtractUsage(fast, ultrafast) };
+    if (mode === "ultrafast") return { ...empty, fast: ultrafast, ultrafast };
+    if (mode === "regular") return { ...empty, regular, unknown };
+    if (mode === "unknown") return { ...empty, regular: unknown, unknown };
+    return { regular, fast, ultrafast, unknown };
   }
   function demoEstimate(modes, name, weighted) {
-    const estimate = { usd: "0.000000000", regular_input_usd: "0.000000000", cached_input_usd: "0.000000000", cache_write_input_usd: "0.000000000", output_usd: "0.000000000", regular_mode_usd: "0.000000000", fast_mode_usd: "0.000000000", standard_base_usd: "0.000000000", fast_surcharge_usd: "0.000000000", priced_tokens: 0, unpriced_tokens: 0, coverage_ratio: 0, reasons: [] };
+    const estimate = { usd: "0.000000000", regular_input_usd: "0.000000000", cached_input_usd: "0.000000000", cache_write_input_usd: "0.000000000", output_usd: "0.000000000", regular_mode_usd: "0.000000000", fast_mode_usd: "0.000000000", ultrafast_mode_usd: "0.000000000", standard_base_usd: "0.000000000", fast_surcharge_usd: "0.000000000", priced_tokens: 0, unpriced_tokens: 0, coverage_ratio: 0, reasons: [] };
     const names = name ? [{ key: name, share: 1 }] : models;
     const unpriced = (kind, model, tokens) => {
       if (!tokens) return;
@@ -218,8 +230,9 @@
       const override = pricingOverrides[part.key];
       const alias = override?.alias_of || part.key;
       const rate = override?.input_usd_per_million != null ? override : catalog.find((item) => item.model === alias);
-      for (const mode of ["regular", "fast"]) {
-        const u = scaledUsage(modes[mode], part.share);
+      for (const mode of ["regular", "fast", "ultrafast"]) {
+        const usage = mode === "fast" ? subtractUsage(modes.fast, modes.ultrafast) : modes[mode];
+        const u = scaledUsage(usage, part.share);
         const total = u.input + u.output;
         if (!rate) { unpriced("unknown_model", part.key, total); continue; }
         const categories = {
@@ -232,12 +245,14 @@
         estimate.standard_base_usd = (Number(estimate.standard_base_usd)+base).toFixed(9);
         const missingWrite = rate.cache_write_input_usd_per_million == null ? u.cache_write_input : 0;
         unpriced("cache_write_rate_missing", part.key, missingWrite);
-        const factor = {"gpt-6-astra":2.5,"gpt-6.1-sol":2.5,"gpt-6-sol":2.5,"gpt-6-luna":2.5,"gpt-5.6-sol":2.5,"gpt-5.6-terra":2.5,"gpt-5.6-luna":2.5,"gpt-5.5":2.5,"gpt-5.4":2}[alias];
-        if (weighted && mode === "fast" && !factor && base !== 0) { unpriced("fast_multiplier_missing", part.key, total-missingWrite); continue; }
-        const multiplier = weighted && mode === "fast" ? (factor || 1) : 1;
+        const factor = mode === "ultrafast" ? ultraFactors[alias] : fastFactors[alias];
+        if (weighted && mode !== "regular" && !factor && base !== 0) { unpriced(mode+"_multiplier_missing", part.key, total-missingWrite); continue; }
+        const multiplier = weighted && mode !== "regular" ? (factor || 1) : 1;
         for (const [key, amount] of Object.entries(categories)) estimate[key] = (Number(estimate[key])+amount*multiplier).toFixed(9);
         estimate.usd = (Number(estimate.usd)+base*multiplier).toFixed(9);
-        estimate[mode === "fast" ? "fast_mode_usd" : "regular_mode_usd"] = (Number(estimate[mode === "fast" ? "fast_mode_usd" : "regular_mode_usd"])+base*multiplier).toFixed(9);
+        const bucket = mode === "regular" ? "regular_mode_usd" : "fast_mode_usd";
+        estimate[bucket] = (Number(estimate[bucket]) + base * multiplier).toFixed(9);
+        if (mode === "ultrafast") estimate.ultrafast_mode_usd = (Number(estimate.ultrafast_mode_usd) + base * multiplier).toFixed(9);
         estimate.fast_surcharge_usd = (Number(estimate.fast_surcharge_usd)+base*(multiplier-1)).toFixed(9);
         estimate.priced_tokens += total - missingWrite;
       }
@@ -251,18 +266,19 @@
     if (!payload || typeof payload !== "object") return payload;
     for (const key of ["points", "models", "items"]) if (payload[key]) payload[key] = withModes(payload[key], url);
     if (payload.usage) {
-      payload.modes = modeUsage(payload.usage, url.searchParams.get("mode"), payload.fast_share ?? .25);
+      const model = payload.model || (models.some((m) => m.key === payload.key) ? payload.key : url.searchParams.get("model"));
+      payload.modes = modeUsage(payload.usage, url.searchParams.get("mode"), payload.fast_share ?? .25, model);
       delete payload.fast_share;
       payload.usage = addUsage(payload.modes.regular, payload.modes.fast);
       if (payload.grand_total != null) payload.grand_total = payload.usage.total;
-      if (payload.estimate) payload.estimate = demoEstimate(payload.modes, payload.model || (models.some((m) => m.key === payload.key) ? payload.key : url.searchParams.get("model")), url.searchParams.get("cost_basis") === "codex_fast_weighted");
+      if (payload.estimate) payload.estimate = demoEstimate(payload.modes, model, url.searchParams.get("cost_basis") === "codex_fast_weighted");
     }
     if (payload.summary && payload.points) {
-      payload.modes = {regular:zeroUsage(),fast:zeroUsage(),unknown:zeroUsage()};
-      for (const point of payload.points) for (const mode of ["regular","fast","unknown"]) payload.modes[mode]=addUsage(payload.modes[mode],point.modes[mode]);
+      payload.modes = {regular:zeroUsage(),fast:zeroUsage(),ultrafast:zeroUsage(),unknown:zeroUsage()};
+      for (const point of payload.points) for (const mode of Object.keys(payload.modes)) payload.modes[mode]=addUsage(payload.modes[mode],point.modes[mode]);
       payload.summary = demoEstimate(payload.modes, url.searchParams.get("model"), url.searchParams.get("cost_basis") === "codex_fast_weighted");
       payload.basis = url.searchParams.get("cost_basis") || "current_standard_api_text_token_prices";
-      payload.fast_rules_as_of = "2026-10-07";
+      payload.fast_rules_as_of = "2026-11-19";
     }
     return payload;
   }
@@ -403,7 +419,7 @@
       reasons: unpricedTokens ? [{ kind: "unknown_model", model: "internal-review", tokens: unpricedTokens, detail: "Synthetic model has no public API rate or local override." }] : []
     };
     return {
-      basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-10-07", bucket: "day", summary: estimate, points,
+      basis: "current_standard_api_text_token_prices", currency: "USD", catalog_as_of: "2026-11-19", bucket: "day", summary: estimate, points,
       models: models.map((item) => {
         const itemUsage = scaledUsage(usage, item.share);
         if (promo) return { key: item.key, usage: itemUsage, fast_share: fastShareOf(points), estimate: {} };
@@ -461,7 +477,7 @@
     return {
       basis: "current_standard_api_text_token_prices",
       currency: "USD",
-      catalog_as_of: "2026-10-07",
+      catalog_as_of: "2026-11-19",
       catalog,
       overrides: pricingOverrides,
       unpriced_models: !diagnostics || pricingOverrides["internal-review"] ? [] : [{ key: "internal-review", usage: scaledUsage(baseUsage, .12), events: 9, sessions: 3 }]
@@ -469,7 +485,7 @@
   }
 
   const promoUpdate = promo && params.get("update") === "available";
-  const demoUpdates = promo ? { current_version: "2.7.3", latest_version: promoUpdate ? "2.8.0" : "2.7.3", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: promoUpdate, can_install: true, phase: "idle", download_dir: "~/Downloads/codex-usage", default_download_dir: "~/Downloads/codex-usage", custom_download_dir: "", can_open_download_dir: false } : { current_version: "2.7.3-demo", latest_version: "2.7.3", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: false, can_install: false, phase: "idle", download_dir: "C:\\Users\\Demo\\Downloads\\codex-usage", default_download_dir: "C:\\Users\\Demo\\Downloads\\codex-usage", custom_download_dir: "", can_open_download_dir: false };
+  const demoUpdates = promo ? { current_version: "2.8.0", latest_version: promoUpdate ? "2.9.0" : "2.8.0", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: promoUpdate, can_install: true, phase: "idle", download_dir: "~/Downloads/codex-usage", default_download_dir: "~/Downloads/codex-usage", custom_download_dir: "", can_open_download_dir: false } : { current_version: "2.8.0-demo", latest_version: "2.8.0", release_url: "https://github.com/zJay26/codex-usage/releases", auto_check: true, available: false, can_install: false, phase: "idle", download_dir: "C:\\Users\\Demo\\Downloads\\codex-usage", default_download_dir: "C:\\Users\\Demo\\Downloads\\codex-usage", custom_download_dir: "", can_open_download_dir: false };
   async function syntheticFetch(input, init = {}) {
     const raw = typeof input === "string" ? input : input.url;
     const url = new URL(raw, root.location.href);
@@ -486,7 +502,7 @@
       return jsonResponse(demoUpdates);
     }
     if (endpoint === "/api/v1/status") return jsonResponse({
-      version: "2.7.3-demo", scanning: false,
+      version: "2.8.0-demo", scanning: false,
       status: {
         machine: promo ? { id: "workstation", label: "Workstation · Windows 11", hostname: "workstation", os: "windows", arch: "amd64" } : { id: "synthetic-machine", label: "Synthetic Windows · demo", hostname: "synthetic-host", os: "windows", arch: "amd64" },
         last_scan: now.toISOString(), accounting_mode: "jsonl_only", otel_active: false,
@@ -559,10 +575,11 @@
 
   function demoExportRows(url) {
     return withModes(sessionPayload(url),url).items.flatMap((item) => {
-      const knownRegular = Object.fromEntries(usageKeys.map(key=>[key,item.modes.regular[key]-item.modes.unknown[key]]));
-      return [["standard",knownRegular],["fast",item.modes.fast],["unknown",item.modes.unknown]].filter(([,usage])=>usage.total>0).map(([mode,usage])=>({
+      const knownRegular = subtractUsage(item.modes.regular, item.modes.unknown);
+      const fastOnly = subtractUsage(item.modes.fast, item.modes.ultrafast);
+      return [["standard",knownRegular],["fast",fastOnly],["ultrafast",item.modes.ultrafast],["unknown",item.modes.unknown]].filter(([,usage])=>usage.total>0).map(([mode,usage])=>({
         session_id:item.session_id,turn_id:item.session_id+"-"+mode,project_path:item.project_path,model:item.model,source:item.source,
-        total:usage.total,usage,service_mode:mode,service_tier:mode==="fast"?"priority":mode==="standard"?"default":"",mode_source:"synthetic",mode_assumed:mode==="unknown"
+        total:usage.total,usage,service_mode:mode,service_tier:{fast:"priority",ultrafast:"ultrafast",standard:"default",unknown:""}[mode],mode_source:"synthetic",mode_assumed:mode==="unknown"
       }));
     });
   }

@@ -89,3 +89,29 @@ func TestFastAliasOverridesAndOverflow(t *testing.T) {
 		t.Fatalf("custom price invented a Fast multiplier: %+v", r)
 	}
 }
+
+func TestUltrafastIncludedUsage(t *testing.T) {
+	for _, tc := range []struct{ name, usd string }{
+		{"gpt-6.2-sol", "12.000000000"}, {"gpt-6.2-astra-2026-11-17", "48.000000000"},
+		{"alias", "48.000000000"}, {"gpt-6-astra", "80.000000000"}, {"gpt-6.1-sol", "16.000000000"},
+		{"gpt-6-luna", "0.000000000"},
+	} {
+		b, err := NewBuilderForBasis(map[string]Override{"alias": {AliasOf: "gpt-6.2-astra"}}, FastWeightedBasis)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e := model.UsageEvent{Model: tc.name, ServiceMode: model.ModeFromTier("ultrafast", "jsonl_turn_context"),
+			Usage: model.TokenUsage{Input: 1000000, Total: 1000000}}
+		if err := b.Add(e); err != nil {
+			t.Fatal(err)
+		}
+		r := b.Report()
+		if r.Summary.USD != tc.usd || r.Summary.FastModeUSD != tc.usd || r.Summary.UltrafastModeUSD != tc.usd ||
+			r.Modes.Ultrafast != e.Usage || r.Modes.Fast != e.Usage || r.Modes.Regular.Total != 0 {
+			t.Fatalf("%s: %+v", tc.name, r)
+		}
+		if tc.name == "gpt-6-luna" && (r.Summary.UnpricedTokens != e.Usage.Total || len(r.Summary.Reasons) != 1 || r.Summary.Reasons[0].Kind != "ultrafast_multiplier_missing") {
+			t.Fatalf("unsupported Ultrafast: %+v", r.Summary)
+		}
+	}
+}

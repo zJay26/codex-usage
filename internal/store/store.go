@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	schemaVersion               = 11
+	schemaVersion               = 12
 	historicalRebuildReasonKey  = "historical_rebuild_required"
 	pricingAggregatableEventSQL = `e.input_tokens>=0 AND e.cached_input_tokens>=0 AND e.cache_write_input_tokens>=0
 		AND e.output_tokens>=0 AND e.reasoning_output_tokens>=0 AND e.total_tokens>=0
@@ -367,7 +367,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			return err
 		}
 	}
-	if err := migrateServiceModes(ctx, tx); err != nil {
+	if err := migrateServiceModes(ctx, tx, databaseVersion); err != nil {
 		return err
 	}
 	if err := migrateRelationships(ctx, tx); err != nil {
@@ -1315,7 +1315,7 @@ func (s *Store) WalkSessionPricingAggregates(ctx context.Context, filter model.F
 		COALESCE(SUM(e.cache_write_input_tokens),0),COALESCE(SUM(e.output_tokens),0),
 		COALESCE(SUM(e.reasoning_output_tokens),0),COALESCE(SUM(e.total_tokens),0)
 		FROM usage_events e WHERE `+where+` AND `+pricingAggregatableEventSQL+`
-		GROUP BY `+sessionExpr+`,e.model,e.service_mode,CASE WHEN e.service_mode='fast' THEN e.id ELSE '' END,`+pricingClassSQL, args...)
+		GROUP BY `+sessionExpr+`,e.model,e.service_mode,CASE WHEN e.service_mode IN ('fast','ultrafast') THEN e.id ELSE '' END,`+pricingClassSQL, args...)
 	if err != nil {
 		return err
 	}
@@ -1447,7 +1447,7 @@ func (s *Store) WalkPricingAggregates(ctx context.Context, filter model.Filter, 
 		COALESCE(SUM(e.cache_write_input_tokens),0),COALESCE(SUM(e.output_tokens),0),
 		COALESCE(SUM(e.reasoning_output_tokens),0),COALESCE(SUM(e.total_tokens),0)
 		FROM usage_events e WHERE `+where+` AND `+pricingAggregatableEventSQL+`
-		GROUP BY e.local_date,e.model,e.service_mode,CASE WHEN e.service_mode='fast' THEN e.id ELSE '' END,`+pricingClassSQL, args...)
+		GROUP BY e.local_date,e.model,e.service_mode,CASE WHEN e.service_mode IN ('fast','ultrafast') THEN e.id ELSE '' END,`+pricingClassSQL, args...)
 	if err != nil {
 		return err
 	}
@@ -1640,9 +1640,13 @@ func canonicalWhere(filter model.Filter, alias string) (string, []any) {
 	}
 	switch filter.Mode {
 	case "regular":
-		parts = append(parts, alias+".service_mode<>'fast'")
+		parts = append(parts, alias+".service_mode NOT IN ('fast','ultrafast')")
 	case "fast":
+		parts = append(parts, alias+".service_mode IN ('fast','ultrafast')")
+	case "fast_only":
 		parts = append(parts, alias+".service_mode='fast'")
+	case "ultrafast":
+		parts = append(parts, alias+".service_mode='ultrafast'")
 	case "unknown":
 		parts = append(parts, alias+".service_mode='unknown'")
 	}

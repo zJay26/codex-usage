@@ -143,7 +143,7 @@
             </div>
             <div><div class="mode-detail" id="hourlyModes"></div><div class="hourly-ledger" id="hourlyLedger"><span class="hourly-placeholder" data-i18n="common.loading">正在读取…</span></div></div>
           </div>
-          <div class="mode-legend"><span data-i18n="mode.totalTokens">总 Token</span><span class="fast" data-i18n="mode.fast">Fast</span></div>
+          <div class="mode-legend"><span data-i18n="mode.totalTokens">总 Token</span><span class="fast" data-i18n="mode.fast">Fast + Ultrafast</span></div>
           <div class="hourly-chart-scroll">
             <div class="hourly-chart" id="hourlyChart">
               <svg class="hourly-line" id="hourlyLine" viewBox="0 0 1000 180" preserveAspectRatio="none" aria-hidden="true"></svg>
@@ -178,14 +178,14 @@
               <p id="pulseCaption" data-i18n="pulse.caption">连续本地自然日 · 零用量日保留位置</p>
             </div>
           </div>
-          <div class="mode-legend"><span data-i18n="mode.totalTokens">总 Token</span><span class="fast">Fast</span></div>
+          <div class="mode-legend"><span data-i18n="mode.totalTokens">总 Token</span><span class="fast" data-i18n="mode.fast">Fast + Ultrafast</span></div>
           <div class="pulse-scroll" id="pulseScroll">
             <div class="pulse-belt" id="pulseBelt" role="listbox" aria-label="每日 Token 用量" data-i18n-aria-label="pulse.aria"></div>
           </div>
           <div class="pulse-inspector" id="pulseInspector" aria-live="polite">
             <div><span data-i18n="pulse.selectedDate">选中日期</span><strong id="pulseDate">—</strong></div>
             <div><span data-i18n="mode.totalTokens">总 Token</span><strong id="pulseTotal">—</strong></div>
-            <div><span>Fast</span><strong id="pulseIO">—</strong></div>
+            <div><span data-i18n="mode.fast">Fast + Ultrafast</span><strong id="pulseIO">—</strong></div>
             <div><span data-i18n="pulse.cost">等价成本</span><strong class="copper" id="pulseCost">—</strong></div>
           </div>
         </div>
@@ -329,7 +329,7 @@
     <div class="dialog-frame">
       <div class="dialog-head"><h2 id="filterTitle" data-i18n="filter.title">筛选当前电脑的数据</h2><button class="dialog-close pressable" type="button" data-close aria-label="关闭筛选" data-i18n-aria-label="action.closeFilter">×</button></div>
       <form class="filter-form" id="filterForm">
-        <label><span data-i18n="filter.mode">运行模式</span><select id="filterMode"><option value="" data-i18n="mode.allModes">全部模式</option><option value="regular" data-i18n="mode.regular">常规</option><option value="fast">Fast</option></select></label>
+        <label><span data-i18n="filter.mode">运行模式</span><select id="filterMode"><option value="" data-i18n="mode.allModes">全部模式</option><option value="regular" data-i18n="mode.regular">常规</option><option value="fast_only">Fast</option><option value="ultrafast">Ultrafast</option><option value="fast" data-i18n="mode.fast">Fast + Ultrafast</option></select></label>
         <label><span data-i18n="filter.date">日期</span><input id="filterDate" type="date" aria-label="筛选日期" data-i18n-aria-label="filter.dateAria"></label>
         <label><span data-i18n="filter.model">模型</span><select id="filterModel"><option value="" data-i18n="filter.allModels">全部模型</option></select></label>
         <label><span data-i18n="filter.source">来源</span><select id="filterSource"><option value="" data-i18n="filter.allSources">全部来源</option></select></label>

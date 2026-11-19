@@ -408,15 +408,20 @@ function apiURL(path, extra = {}, filters = state.filters) {
 function modesFor(row = {}) {
   if (row.modes) return row.modes;
   const usage = row.usage || emptyUsage();
-  return { regular: usage, fast: emptyUsage(), unknown: usage };
+  return { regular: usage, fast: emptyUsage(), ultrafast: emptyUsage(), unknown: usage };
+}
+function acceleratedText(row) {
+  const modes = modesFor(row);
+  const ultra = usageTotal(modes.ultrafast);
+  const fast = usageTotal(modes.fast) - ultra;
+  return `Fast ${formatToken(fast)}` + (ultra ? ` / Ultrafast ${formatToken(ultra)}` : "");
 }
 function modeText(row = {}) {
-  const m = modesFor(row);
-  return `${t("mode.totalTokens")} ${formatToken(usageTotal(row.usage))} / Fast ${formatToken(usageTotal(m.fast))}`;
+  return `${t("mode.totalTokens")} ${formatToken(usageTotal(row.usage))} / ${acceleratedText(row)}`;
 }
 function modeDetail(row = {}, compact = false) {
   const m = modesFor(row);
-  const fast = `<span class="mode-fast">Fast <b>${formatToken(usageTotal(m.fast))}</b></span>`;
+  const fast = `<span class="mode-fast">${acceleratedText(row)}</span>`;
   return compact ? fast : `<span>${t("mode.regular")} ${formatToken(usageTotal(m.regular))}</span> / ${fast}`;
 }
 function costRulesDate(report = {}) {
@@ -425,7 +430,10 @@ function costRulesDate(report = {}) {
   return t("mode.ruleDates", {apiDate: date(report.catalog_as_of), fastDate: date(report.fast_rules_as_of)});
 }
 function costModes(estimate = {}) {
-  return `${t("mode.regular")} ${formatUSD(estimate.regular_mode_usd ?? estimate.usd ?? 0)} / Fast ${formatUSD(estimate.fast_mode_usd || 0)}`;
+  const ultra = Number(estimate.ultrafast_mode_usd || 0);
+  const fast = Number(estimate.fast_mode_usd || 0) - ultra;
+  return `${t("mode.regular")} ${formatUSD(estimate.regular_mode_usd ?? estimate.usd ?? 0)} / Fast ${formatUSD(fast)}` +
+    (ultra ? ` / Ultrafast ${formatUSD(ultra)}` : "");
 }
 document.addEventListener("click", (event) => {
   const button = event.target.closest?.("[data-mode-filter]");
@@ -1108,7 +1116,7 @@ function renderOverviewModels(models) {
     const total = usageTotal(item.usage);
     const cost = estimateDisplay(item.estimate);
     const coverage = estimateTokens(item.estimate) ? formatPercent(item.estimate.coverage_ratio) : t("dynamic.unpriced");
-    return `<div class="rank-row"><span class="rank-name" title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><span class="rank-signal" aria-hidden="true"><i style="width:${Math.max(1, total / max * 100)}%"></i></span><span class="rank-value" title="${fullToken(total)} Token">${formatToken(usageTotal(item.usage))}<small class="mode-fast">Fast ${formatToken(usageTotal(modesFor(item).fast))}</small><small>${cost} · ${coverage}</small></span></div>`;
+    return `<div class="rank-row"><span class="rank-name" title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><span class="rank-signal" aria-hidden="true"><i style="width:${Math.max(1, total / max * 100)}%"></i></span><span class="rank-value" title="${fullToken(total)} Token">${formatToken(usageTotal(item.usage))}<small class="mode-fast">${acceleratedText(item)}</small><small>${cost} · ${coverage}</small></span></div>`;
   }).join("");
 }
 
@@ -1230,7 +1238,7 @@ function renderCalendar(report) {
     const selected = date === state.selectedDate;
     const hasCost = Number(point.estimate?.priced_tokens || 0) > 0;
     const aria = t("dynamic.calendarDayAria", { day: i18n.formatNumber(day), tokens: fullToken(total), estimate: estimateLabel(point.estimate) });
-    cells.push(`<button class="calendar-day pressable ${selected ? "selected" : ""} ${date === todayKey() ? "today" : ""} ${total ? "" : "zero"}" type="button" role="gridcell" data-calendar-date="${date}" aria-selected="${selected}" tabindex="${selected ? "0" : "-1"}" aria-label="${escapeHTML(`${aria} / ${modeText(point)}`)}"><span class="day-number">${i18n.formatNumber(day)}</span>${hasCost ? '<i class="cost-marker" aria-hidden="true"></i>' : ""}<span class="day-usage" aria-hidden="true"><i style="--day-strength:${strength}%"></i></span><span class="day-amount">${formatToken(usageTotal(point.usage))}</span><small class="day-fast-amount">Fast ${formatToken(usageTotal(modesFor(point).fast))}</small></button>`);
+    cells.push(`<button class="calendar-day pressable ${selected ? "selected" : ""} ${date === todayKey() ? "today" : ""} ${total ? "" : "zero"}" type="button" role="gridcell" data-calendar-date="${date}" aria-selected="${selected}" tabindex="${selected ? "0" : "-1"}" aria-label="${escapeHTML(`${aria} / ${modeText(point)}`)}"><span class="day-number">${i18n.formatNumber(day)}</span>${hasCost ? '<i class="cost-marker" aria-hidden="true"></i>' : ""}<span class="day-usage" aria-hidden="true"><i style="--day-strength:${strength}%"></i></span><span class="day-amount">${formatToken(usageTotal(point.usage))}</span><small class="day-fast-amount">${usageTotal(modesFor(point).ultrafast) ? t("mode.accelerated") : "Fast"} ${formatToken(usageTotal(modesFor(point).fast))}</small></button>`);
   }
   while (cells.length % 7) cells.push(`<span class="calendar-blank" aria-hidden="true"></span>`);
   const grid = $("#calendarGrid");
@@ -1320,7 +1328,7 @@ function renderDayDetail(point, report, loadingModels = false) {
   }
   const models = report?.models || [];
   $("#dayModelCount").textContent = models.length ? t("common.modelShort", { count: i18n.formatNumber(models.length) }) : "";
-  $("#dayModels").innerHTML = models.length ? models.map((item) => `<div class="mini-model-row"><span title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><strong title="${fullToken(usageTotal(item.usage))}">${formatToken(usageTotal(item.usage))}<small class="mode-fast">Fast ${formatToken(usageTotal(modesFor(item).fast))}</small></strong></div>`).join("") : `<div class="empty-state">${escapeHTML(t("dynamic.noModelsDay"))}</div>`;
+  $("#dayModels").innerHTML = models.length ? models.map((item) => `<div class="mini-model-row"><span title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><strong title="${fullToken(usageTotal(item.usage))}">${formatToken(usageTotal(item.usage))}<small class="mode-fast">${acceleratedText(item)}</small></strong></div>`).join("") : `<div class="empty-state">${escapeHTML(t("dynamic.noModelsDay"))}</div>`;
 }
 
 async function loadBreakdown({ preserve = false } = {}) {
@@ -1410,7 +1418,7 @@ function renderBreakdown(items, dimension) {
     const aria = active
       ? t("dynamic.drillCancelAria", { value: item.key })
       : t("dynamic.drillAria", { value: item.key });
-    return `<div class="breakdown-row"><span class="breakdown-name" title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><span class="breakdown-track" aria-hidden="true"><i style="width:${Math.max(1, totalTokens / max * 100)}%"></i></span><span class="breakdown-value" title="${fullToken(totalTokens)} Token">${formatToken(usageTotal(item.usage))}<small class="mode-fast">Fast ${formatToken(usageTotal(modesFor(item).fast))}</small></span>${canFilter ? `<button class="breakdown-filter pressable ${active ? "active" : ""}" type="button" data-drill-value="${escapeHTML(item.key)}" title="${escapeHTML(title)}" aria-label="${escapeHTML(aria)}" aria-pressed="${active}">${active ? "×" : "＋"}</button>` : "<span></span>"}</div>`;
+    return `<div class="breakdown-row"><span class="breakdown-name" title="${escapeHTML(item.key)}">${escapeHTML(item.key)}</span><span class="breakdown-track" aria-hidden="true"><i style="width:${Math.max(1, totalTokens / max * 100)}%"></i></span><span class="breakdown-value" title="${fullToken(totalTokens)} Token">${formatToken(usageTotal(item.usage))}<small class="mode-fast">${acceleratedText(item)}</small></span>${canFilter ? `<button class="breakdown-filter pressable ${active ? "active" : ""}" type="button" data-drill-value="${escapeHTML(item.key)}" title="${escapeHTML(title)}" aria-label="${escapeHTML(aria)}" aria-pressed="${active}">${active ? "×" : "＋"}</button>` : "<span></span>"}</div>`;
   }).join("");
   $$('[data-drill-value]', container).forEach((button) => button.addEventListener("click", () => {
     if (state.filters[dimension] === button.dataset.drillValue) delete state.filters[dimension];

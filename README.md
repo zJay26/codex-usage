@@ -89,9 +89,9 @@ chmod +x codex-usage
 
 **codex-usage 是为日常高频使用 Codex 打磨的完整本地用量统计工具。** 总量、趋势、费用、模型、项目和任务明细集中在一个清晰的 Dashboard：先看全貌，再顺着日期、小时、模型或任务找到消耗来源。单台电脑用起来完整顺手，多台电脑使用同一账号时，逐电脑统计又能让每台主机的用量各自清楚。
 
-安装一次，历史记录自动整理，后续用量持续更新。**从“今天用了多少”到“这 90 分钟、这个项目、这棵子任务树花了多少”，都能在同一个界面里查清。** 常规 / Fast 拆分、精确到分钟的时间范围、Session 搜索、组合筛选、API 等价费用和数据导出一应俱全；中英双语、明暗主题、显示设置与手机布局让日常查看同样舒服。
+安装一次，历史记录自动整理，后续用量持续更新。**从“今天用了多少”到“这 90 分钟、这个项目、这棵子任务树花了多少”，都能在同一个界面里查清。** 常规、Fast、Ultrafast 拆分、精确到分钟的时间范围、Session 搜索、组合筛选、API 等价费用和数据导出一应俱全；中英双语、明暗主题、显示设置与手机布局让日常查看同样舒服。
 
-Windows、Linux / WSL、macOS 均可使用，一个程序即可安装，无需部署数据库或中心服务器。所有统计留在当前电脑，不保存 prompt、回复或工具输出，也不读取 `auth.json`。费用是按内置公开 API 单价及 Fast 额度倍率计算的等价估算，并非真实账单或账号配额。
+Windows、Linux / WSL、macOS 均可使用，一个程序即可安装，无需部署数据库或中心服务器。所有统计留在当前电脑，不保存 prompt、回复或工具输出，也不读取 `auth.json`。费用是按内置公开 API 单价及 加速模式额度倍率计算的等价估算，并非真实账单或账号配额。
 
 ## 为日常使用打磨的完整功能
 
@@ -99,12 +99,12 @@ Windows、Linux / WSL、macOS 均可使用，一个程序即可安装，无需�
 |---|---|
 | 一眼看清总量与费用 | 总 Token、Input / Cached / Cache Write / Output / Reasoning 构成、API 等价成本与定价覆盖率集中展示 |
 | 自定义时间查询 | 今天、7 日、30 日、全部历史，或精确到分钟的任意起止范围；跨天查询并显示未经缩写的精确总量 |
-| 常规 / Fast 拆分 | 总览、趋势、模型和任务展示总量与 Fast；可只看 Fast 消耗，并按支持模型的额度倍率折算费用 |
+| 运行模式 | 分别筛选常规、Fast 和 Ultrafast，比较各模式的原始 Token 和加权费用 |
 | 每日与小时下钻 | 连续趋势、月历、零用量日、小时分布与模型组成；远程浏览器遵循统一计量时区，正确区分夏令时重复小时 |
 | 多维用量归属 | 按模型、来源、项目、Thread、Session，以及主任务、Subagent、Guardian、Memory 理解消耗 |
 | 主任务与子任务树 | 折叠查看明确父子关系，区分本任务与含子任务用量；费用列仅计本任务 |
 | 搜索、筛选与导出 | 搜索任务标题、Session ID、项目、模型或来源，组合日期 / 模式 / Agent 等筛选，一键导出当前范围的 JSON / CSV |
-| 可配置的模型定价 | 内置 GPT-6 Astra / Sol / Luna 等模型价格，支持内部模型映射和本机单价覆写；无法定价的部分明确标出 |
+| 可配置的模型定价 | 内置 GPT-6.2 Sol、GPT-6.2 Astra 等模型的公开价格，支持本机模型映射、自定义单价和未定价用量提示 |
 | 顺手的界面 | 中英双语、明暗主题、字体与密度设置、减少动态效果、手机适配；统计与费用始终跟随同一筛选范围 |
 | 逐电脑独立统计 | 公司电脑、家用电脑及 Windows / WSL / Linux / macOS 主机分别查看，定位各自的消耗 |
 | 持续更新与数据核对 | 自动整理历史并增量扫描；识别重复、fork 重放和压缩请求，需要重建时保留统计并请求确认 |
@@ -117,10 +117,16 @@ Windows、Linux / WSL、macOS 均可使用，一个程序即可安装，无需�
 |---|---|
 | 当前电脑的 Token、模型、来源、项目、Thread、Session、Agent 和自然日 | 账号在其他电脑上的用量 |
 | 本机已有以及之后新增的 Codex session 用量记录 | 账号配额、订阅余额或真实账单 |
-| 按 Standard API 文本价格与 Fast 额度倍率折算的费用和定价覆盖率 | prompt、回复、reasoning 内容、工具输出或 `auth.json` |
+| 按 Standard API 文本价格与 加速模式额度倍率折算的费用和定价覆盖率 | prompt、回复、reasoning 内容、工具输出或 `auth.json` |
 | 重复、回退、坏记录和文件重建等数据质量提示 | 云同步、远程遥测或第三方分析 |
 
-> “电脑”指运行 Codex 客户端和 codex-usage 的主机，不是 shell 或 tool 实际执行的远程环境。Codex 官方 `/usage` 查看账号级活动；codex-usage 补充当前电脑上的详细归属。
+> “电脑”指运行 Codex 客户端和 codex-usage 的主机。远程 shell 的活动归入启动该聊天的客户端主机。
+
+### 与 Codex 官方用量分析怎么配合
+
+- **查额度和团队使用情况。** 官方用量页提供账号余额和重置时间。符合条件的工作区还能按模型、推理和速度查看近期趋势、查看高消耗聊天及其费用，并借助 Personal Analytics 或 Usage Insights 分析工作区活动。[账号用量](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan) · [桌面端用量与 Personal Analytics](https://help.openai.com/en/articles/20001478) · [工作区 Usage Insights](https://learn.chatgpt.com/docs/enterprise/usage-insights)
+- **查一次任务花在哪里。** 在 codex-usage 中按本机项目、时间段和 Agent 筛选，展开会话树，对照主任务、自身用量和含子任务的合计。官方说明指出，部分子代理和后台工作可能未计入主聊天的显示值。父子归属取决于本机保留的关系记录。[官方聊天用量说明](https://help.openai.com/en/articles/20001478)
+- **复核一次运行。** 对本机已经收录的历史，可以按分钟划定区间，导出同一筛选范围的 JSON / CSV 事件，核对缓存写入、推理 Token、fork 重放去重和未定价部分。离线分析无需工作区管理员授权。金额按当前目录估算，账号实扣和跨设备余额以官方记录为准。
 
 <details><summary>查看当前桌面与手机界面（合成数据）</summary>
 
@@ -191,14 +197,16 @@ Dashboard 固定为“概览 / 每日 / 明细”三个一级视图。概览默�
 
 ### 5. API 等价成本
 
-Dashboard 展示常规、Fast 和全部 token，并提供模式筛选。Fast 原始 token 不乘倍率；费用按 Standard 基价乘 ChatGPT Codex 额度倍率：GPT-6.1 Sol、GPT-6 Astra/Sol/Luna、GPT-5.6 系列、GPT-5.5 为 2.5 倍，GPT-5.4 为 2 倍。未知倍率的型号保留为未定价。历史模式仅凭同一 turn 的明确证据补齐，未确认部分暂归常规。详见 [Fast 模式口径、历史补齐与接口说明](docs/fast-mode-accounting.md)。
+Dashboard 可分别筛选常规、Fast 和 Ultrafast。原始 Token 直接按日志计数。GPT-6.2 Sol 和 Astra 的费用估算使用订阅内含额度倍率，Fast 为 2×，Ultrafast 为 6×。模式取自同一轮的明确记录，未确认部分暂归常规。其他模型的倍率见 [模式及接口说明](docs/fast-mode-accounting.md)。[OpenAI 速度倍率](https://learn.chatgpt.com/docs/pricing)
 
 费用在查询时流式读取已经过去重、归属规则筛选后的规范事件，不写入 SQLite，也不会改变原有 Token 统计。计算使用定点 nano-USD：Cached Input 与 Cache Write 从 Input 中扣除，Reasoning 已包含在 Output 中，不会重复收费。
 
-内置 Standard 文本价格目录更新于 **2026-10-07**，单位均为 USD / 1M Token：
+内置 Standard 短上下文文本价格目录更新于 **2026-11-19**，单位为 USD / 1M Token。
 
 | 模型 | Input | Cached | Cache Write | Output |
 |---|---:|---:|---:|---:|
+| [GPT-6.2 Astra](https://developers.openai.com/api/docs/models/gpt-6.2-astra) | 8.00 | 0.40 | 10.00 | 40.00 |
+| [GPT-6.2 Sol](https://developers.openai.com/api/docs/models/gpt-6.2-sol) | 2.00 | 0.10 | 2.50 | 10.00 |
 | [GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra) | 10.00 | 1.00 | 12.50 | 50.00 |
 | [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol) | 2.00 | 0.10 | 2.50 | 10.00 |
 | [GPT-6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol) | 2.00 | 0.20 | 2.50 | 10.00 |
@@ -212,7 +220,7 @@ Dashboard 展示常规、Fast 和全部 token，并提供模式筛选。Fast 原
 | [GPT-5.3-Codex](https://developers.openai.com/api/docs/models/gpt-5.3-codex) | 1.75 | 0.175 | 未公开 | 14.00 |
 | [GPT-5.2-Codex](https://developers.openai.com/api/docs/models/gpt-5.2-codex) | 1.75 | 0.175 | 未公开 | 14.00 |
 
-GPT-6.1 Sol、GPT-6 Astra/Sol/Luna 和 GPT-5.6 的 Cache Write 使用官方“普通 Input 的 1.25 倍”规则。本机 JSONL 保存的是累计 Token 活动，不能可靠还原 API 账单中的逐请求边界；估算采用上表 Standard 基价，并对明确 Fast 的用量折算，不推断长上下文倍率。页面始终同时展示费用和 Token 定价覆盖率，未知模型不会被当成零费用。
+GPT-6.2 两款模型的 Cache Write 使用 30 分钟缓存写入价。日志中的合计数不足以判定每次请求的上下文档位和缓存保留时长，估算统一采用上表基价。页面同时给出定价覆盖率和未定价原因。
 
 本软件将独立的 `codex-auto-review` 默认按零价估算，Token 仍正常统计。这是根据维护者收到的 Tibo 免费说明采用的本地计价规则；截至 2026-10-07，尚未找到明确的官方公开免费条款，不作为官方 API 报价。已有手动覆写继续优先，删除该项覆写后恢复默认零价。只匹配这一模型标识，不会使开启 Auto-review 的主模型免费；历史估算同样使用当前规则。
 

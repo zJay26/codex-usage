@@ -17,10 +17,10 @@ func sessionRowsSQL(where string) string {
 		values = append(values, "a."+c)
 	}
 	values = append(values, "a.event_count", "a.confidence", "a.last_usage")
-	for _, mode := range []string{"fast", "unknown"} {
+	for _, bucket := range modeBuckets {
 		for _, c := range columns {
-			name := mode + "_" + c
-			aggregates = append(aggregates, "SUM(CASE WHEN e.service_mode='"+mode+"' THEN e."+c+" ELSE 0 END) "+name)
+			name := bucket.name + "_" + c
+			aggregates = append(aggregates, "SUM(CASE WHEN "+bucket.predicate+" THEN e."+c+" ELSE 0 END) "+name)
 			values = append(values, "a."+name)
 		}
 	}
