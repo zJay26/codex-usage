@@ -8,8 +8,8 @@ import (
 )
 
 const FastWeightedBasis = "codex_fast_weighted"
-const FastRulesAsOf = "2026-10-07"
-const FastRulesSource = "https://learn.chatgpt.com/docs/agent-configuration/speed"
+const FastRulesAsOf = "2026-11-19"
+const FastRulesSource = "https://learn.chatgpt.com/docs/pricing"
 
 func ValidBasis(basis string) bool {
 	return basis == "" || basis == Basis || basis == FastWeightedBasis
@@ -34,16 +34,30 @@ func NewBuilderForBasis(overrides map[string]Override, basis string, locations .
 
 // Deliberate allowlist; mini, Spark, future models and custom rates are not
 // assigned a subscription multiplier merely by sharing a name prefix.
-func FastMultiplier(canonical string) (int64, int64, bool) {
-	// Only catalog aliases and dated snapshots can resolve to this allowlist.
-	if rate, found, err := Resolve(canonical, nil); err == nil && found {
-		canonical = rate.CanonicalModel
+func FastMultiplier(modelID string) (int64, int64, bool) {
+	entry, ok := resolveBuiltIn(modelID)
+	if !ok {
+		return 0, 0, false
 	}
-	switch canonical {
+	switch entry.Model {
 	case "gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5":
 		return 5, 2, true
-	case "gpt-5.4":
+	case "gpt-6.2-astra", "gpt-6.2-sol", "gpt-5.4":
 		return 2, 1, true
+	default:
+		return 0, 0, false
+	}
+}
+
+func speedMultiplier(canonical, mode string) (int64, int64, bool) {
+	if mode == model.ModeFast {
+		return FastMultiplier(canonical)
+	}
+	switch canonical {
+	case "gpt-6.2-astra", "gpt-6.2-sol":
+		return 6, 1, true
+	case "gpt-6-astra", "gpt-6.1-sol":
+		return 8, 1, true
 	default:
 		return 0, 0, false
 	}
@@ -61,7 +75,7 @@ func evaluateWithBasis(event model.UsageEvent, overrides map[string]Override, ba
 			return out, err
 		}
 	}
-	if basis != FastWeightedBasis || out.mode != model.ModeFast || out.pricedTokens == 0 {
+	if basis != FastWeightedBasis || (out.mode != model.ModeFast && out.mode != model.ModeUltrafast) || out.pricedTokens == 0 {
 		return out, nil
 	}
 	rate, found, err := Resolve(event.Model, overrides)
@@ -74,9 +88,9 @@ func evaluateWithBasis(event model.UsageEvent, overrides map[string]Override, ba
 		rate.CacheWriteNanoPerToken != nil && *rate.CacheWriteNanoPerToken == 0 && rate.OutputNanoPerToken == 0 {
 		return out, nil
 	}
-	n, d, ok := FastMultiplier(rate.CanonicalModel)
+	n, d, ok := speedMultiplier(rate.CanonicalModel, out.mode)
 	if !found || !ok {
-		out.reasons = append(out.reasons, UnpricedReason{Kind: "fast_multiplier_missing", Model: event.Model, Tokens: out.pricedTokens, Detail: "没有已确认的 ChatGPT Codex Fast 额度倍率"})
+		out.reasons = append(out.reasons, UnpricedReason{Kind: out.mode + "_multiplier_missing", Model: event.Model, Tokens: out.pricedTokens, Detail: "没有已确认的 ChatGPT Codex 加速额度倍率"})
 		out.unpricedTokens += out.pricedTokens
 		out.pricedTokens = 0
 		out.regularNano, out.cachedNano, out.cacheWriteNano, out.outputNano = 0, 0, 0, 0

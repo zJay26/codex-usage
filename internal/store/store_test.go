@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -648,8 +649,8 @@ func TestV4MigrationPreservesHistoryUntilSingleMetadataRebuildApproved(t *testin
 	if err := st.db.QueryRow(`SELECT value FROM meta WHERE key='schema_version'`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != "11" {
-		t.Fatalf("schema version = %q, want 11", version)
+	if version != strconv.Itoa(schemaVersion) {
+		t.Fatalf("schema version = %q, want %d", version, schemaVersion)
 	}
 	if err := st.ResetHistorical(ctx); err != nil {
 		t.Fatal(err)

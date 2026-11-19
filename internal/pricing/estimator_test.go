@@ -55,12 +55,14 @@ func TestEvaluateEventSeparatesOverlappingTokenCategories(t *testing.T) {
 	}
 }
 
-func TestGPT6SolAndLunaCategoryEstimates(t *testing.T) {
+func TestGPT6CategoryEstimates(t *testing.T) {
 	for _, tt := range []struct {
 		name, regular, cached, write, output, standard, fast string
 	}{
 		{"gpt-6-sol", "0.001400000", "0.000040000", "0.000250000", "0.001000000", "0.002690000", "0.006725000"},
 		{"gpt-6.1-sol", "0.001400000", "0.000020000", "0.000250000", "0.001000000", "0.002670000", "0.006675000"},
+		{"gpt-6.2-sol", "0.001400000", "0.000020000", "0.000250000", "0.001000000", "0.002670000", "0.005340000"},
+		{"gpt-6.2-astra", "0.005600000", "0.000080000", "0.001000000", "0.004000000", "0.010680000", "0.021360000"},
 		{"gpt-6-luna", "0.000070000", "0.000002000", "0.000012500", "0.000050000", "0.000134500", "0.000336250"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

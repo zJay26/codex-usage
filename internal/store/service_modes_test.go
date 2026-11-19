@@ -18,22 +18,23 @@ func TestServiceModeAggregatesFiltersAndPricing(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	for _, mode := range []string{"default", "priority", ""} {
+	for _, mode := range []string{"default", "priority", "ultrafast", ""} {
 		e := model.UsageEvent{ID: mode + "id", SessionID: "mixed", TurnID: mode, Model: "gpt-6-astra", Timestamp: time.Now(), Usage: model.TokenUsage{Input: 100, Output: 20, Total: 120}, Provenance: model.ProvenanceSessionJSONL, ServiceMode: model.ModeFromTier(mode, "jsonl_turn_context")}
 		if _, err := st.InsertEvent(ctx, e, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for _, tt := range []struct {
-		mode                          string
-		total, regular, fast, unknown int64
-	}{{"", 360, 240, 120, 120}, {"regular", 240, 240, 0, 120}, {"fast", 120, 0, 120, 0}, {"unknown", 120, 120, 0, 120}} {
+		mode                                 string
+		total, regular, fast, ultra, unknown int64
+	}{{"", 480, 240, 240, 120, 120}, {"regular", 240, 240, 0, 0, 120}, {"fast", 240, 0, 240, 120, 0},
+		{"fast_only", 120, 0, 120, 0, 0}, {"ultrafast", 120, 0, 120, 120, 0}, {"unknown", 120, 120, 0, 0, 120}} {
 		f := model.Filter{Mode: tt.mode}
 		s, err := st.Summary(ctx, f)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if s.Usage.Total != tt.total || s.Modes.Regular.Total != tt.regular || s.Modes.Fast.Total != tt.fast || s.Modes.Unknown.Total != tt.unknown {
+		if s.Usage.Total != tt.total || s.Modes.Regular.Total != tt.regular || s.Modes.Fast.Total != tt.fast || s.Modes.Ultrafast.Total != tt.ultra || s.Modes.Unknown.Total != tt.unknown {
 			t.Fatalf("%s: %+v", tt.mode, s)
 		}
 		points, err := st.Timeseries(ctx, f, "hour")
@@ -63,6 +64,51 @@ func TestServiceModeAggregatesFiltersAndPricing(t *testing.T) {
 		if !reflect.DeepEqual(raw.Report().Summary, agg.Report().Summary) || !reflect.DeepEqual(raw.Report().Summary, sess.Report().Summary) {
 			t.Fatalf("pricing aggregation lost mode: raw=%+v agg=%+v sess=%+v", raw.Report().Summary, agg.Report().Summary, sess.Report().Summary)
 		}
+	}
+}
+
+func TestV11MigrationRecoversExplicitUltrafast(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "usage.sqlite")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []string{"jsonl_turn_context", "diagnostic_turn_input", "diagnostic_turn_input_conflict"} {
+		old := model.ServiceMode{ServiceMode: model.ModeUnknown, ServiceTier: "ultrafast", ModeSource: source}
+		if err := st.PutTurnModes(ctx, []TurnMode{{Home: "home", SessionID: "s", TurnID: source, Mode: old}}); err != nil {
+			t.Fatal(err)
+		}
+		_, err := st.InsertEvent(ctx, model.UsageEvent{ID: source, SessionID: "s", TurnID: source, CodexHome: "home",
+			Model: "gpt-6.2-sol", ServiceMode: old, Usage: model.TokenUsage{Input: 10, Total: 10},
+			Provenance: model.ProvenanceSessionJSONL}, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := st.db.Exec(`UPDATE meta SET value='11' WHERE key='schema_version'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	summary, err := st.Summary(ctx, model.Filter{})
+	if err != nil || summary.GrandTotal != 30 || summary.Modes.Ultrafast.Total != 20 || summary.Modes.Unknown.Total != 10 {
+		t.Fatalf("migrated events: %+v, %v", summary, err)
+	}
+	for _, source := range []string{"jsonl_turn_context", "diagnostic_turn_input", "diagnostic_turn_input_conflict"} {
+		mode, err := st.ModeForTurn(ctx, "home", "s", source)
+		if err != nil || mode.ModeSource != source || (mode.ServiceMode == model.ModeUltrafast) != (source != "diagnostic_turn_input_conflict") {
+			t.Fatalf("migrated turn %s: %+v, %v", source, mode, err)
+		}
+	}
+	if _, pending, err := st.HistoricalRebuildReason(ctx); err != nil || pending {
+		t.Fatalf("unexpected rebuild: %v, %v", pending, err)
 	}
 }
 

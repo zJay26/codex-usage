@@ -1,16 +1,18 @@
-# Fast 模式统计与费用折算
+# Fast 和 Ultrafast 用量与费用
 
-Dashboard 以总 Token 为主要指标，概览下方显示常规 / Fast 拆分；趋势、模型和任务显示总量与 Fast。原始 token 不乘倍率，常规与 Fast 相加始终等于总 Token。模式未确认记录归入常规，界面不单独提示；API 和导出保留原始模式元数据供追溯。
+Dashboard 按常规、Fast、Ultrafast 展示原始 Token。趋势图同时绘制总量和加速合计，可筛选任一速度单独查看。模式未确认的记录暂归常规，事件导出保留判断依据。
 
 ## 模式证据
 
 计数继续只来自 Session JSONL。JSONL `turn_context.service_tier` 的明确值优先；缺少该字段时，扫描器只读同一 Codex Home 的 `logs_*.sqlite`，使用 `codex_core::session::handlers` 中 `TurnInput` 的 submission ID 与 session ID 精确关联用量 turn。
 
-`fast`、`priority` 表示 Fast，`default` 表示常规。诊断字段 `Some(None)` 表示明确清除 Fast 设置，归为常规；`None` 只表示没有覆写，保持未确认。单独的 ThreadSettings、当前配置、模型名、运行速度及时间接近程度都不用于推断模式。未知等级或同等级来源发生冲突时，保留未确认分类。
+`fast`、`priority` 表示 Fast，`ultrafast` 表示 Ultrafast，`default` 表示常规。诊断字段 `Some(None)` 表示明确清除速度设置，归为常规。`None` 表示没有覆写，保持未确认。同一等级的证据发生冲突时，该轮保留未确认分类。
 
 解析器按结构识别字段，跳过提示词中的字符串及转义内容；数据库只保存模式元数据，不保存诊断正文。记录表示请求选择的模式，不能证明服务端最终处理等级或真实扣费。
 
 ## 历史与升级
+
+v2.8.0 将 schema v11 升至 v12，按已保存的明确 `service_tier` 补认 Ultrafast，只更新事件和轮次的模式。费用在查询时按新目录重算。此前为 6.2 正式标识或其日期快照设置的临时别名、单价由内置价格接替，其他本机映射继续生效。
 
 schema v7 到 v8 为增量迁移，不清除账目或扫描游标，不要求全量重建。更早版本已有的重建要求继续保留。首次扫描会读取旧 JSONL 的模式元数据，并分批导入尚存在的诊断记录；后续按诊断游标增量补齐，晚到证据可重新分类已入账事件。
 
@@ -18,18 +20,23 @@ schema v7 到 v8 为增量迁移，不清除账目或扫描游标，不要求全
 
 ## 费用口径
 
-常规沿用既有 Standard API 价格及本机定价覆写。Fast 的相同 token 分类基础费用乘以 ChatGPT Codex 额度倍率：GPT-6.1 Sol、GPT-6 Astra/Sol/Luna、GPT-5.6 Sol/Terra/Luna、GPT-5.5 为 2.5；GPT-5.4 为 2。别名与日期快照通过模型目录解析，不将 mini、Spark、未知模型或未确认的自定义模型自动套入倍率。
+加速费用以 Standard 短上下文 API 文本价格为基数，乘以 Codex 订阅内含额度倍率。下表用于本地估算，包括旧型号的历史数据。定价核对日期为 2026-11-19。[OpenAI 速度倍率](https://learn.chatgpt.com/docs/pricing)
 
-界面统一称为“API 等价成本”，以一句话显示 API 价格和 Fast 额度规则的更新日期。计算仍为额度倍率加权的估算，不是实际 API Priority 账单，也不是账号额度扣除记录。未知单价、缺失缓存写入价格、缺少 Fast 倍率的部分继续显示为未定价。
+| 模型 | Fast | Ultrafast |
+|---|---:|---:|
+| GPT-6.2 Sol、GPT-6.2 Astra | 2× | 6× |
+| GPT-6.1 Sol、GPT-6 Astra | 2.5× | 8× |
+| GPT-6 Sol/Luna、GPT-5.6 Sol/Terra/Luna、GPT-5.5 | 2.5× | — |
+| GPT-5.4 | 2× | — |
 
-GPT-6.1 Sol 倍率核对于 2026-10-07，既有型号规则保留；这里使用订阅内含额度倍率（2.5x），不是购买 credits / API 的 Fast 倍率（2x）。来源：[OpenAI Fast 模式说明](https://learn.chatgpt.com/docs/agent-configuration/speed)。历史估算使用当前目录与倍率，不模拟历史账单。
+缺少价格或倍率的部分列入未定价 Token。6.2 的 Cache Write 采用 30 分钟保留价。长上下文、12 小时缓存、购买 credits、API 或 Enterprise PAYG 的实际费用请按对应账单口径核对。
 
 ## API 与导出
 
-- 汇总、趋势、分解、任务和费用报告增加 `modes.regular`、`modes.fast`、`modes.unknown`，各自包含原有 token 分类；`unknown` 是 `regular` 的子集。原有 `usage` 与 `grand_total` 保持全部原始 token 语义。
-- 统计及导出接口接受 `mode=regular|fast|unknown`，省略表示全部。常规筛选包含模式未确认记录。
+- 汇总、趋势、分解、任务和费用报告中，`modes.regular + modes.fast` 为全部原始 Token。`modes.ultrafast` 是 `modes.fast` 的子集，`modes.unknown` 是 `modes.regular` 的子集。
+- 统计及导出接口支持 `mode=regular|fast_only|ultrafast|fast|unknown`。省略表示全部，`fast_only` 仅选 Fast，`fast` 选两种加速模式的合计。
 - `/api/v1/cost-estimate`、`/api/v1/sessions`、`/api/v1/session-estimates` 接受 `cost_basis=codex_fast_weighted`。省略参数仍返回原有 Standard API 估算，Dashboard 显式使用新口径。
-- 费用新增 `regular_mode_usd`、`fast_mode_usd`、`standard_base_usd`、`fast_surcharge_usd`。`usd` 是当前口径下已定价部分的合计；基础估算可包含因倍率未知而未参与加权合计的部分，应同时查看未定价原因。
+- `regular_mode_usd + fast_mode_usd` 为已定价费用总额，`ultrafast_mode_usd` 已包含在 `fast_mode_usd` 内。`standard_base_usd` 为基础估算，`fast_surcharge_usd` 为两种加速模式产生的附加费用。
 - JSON/CSV 原始事件导出增加 `service_mode`、`service_tier`、`mode_source`、`mode_assumed`。`service_mode=unknown` 与 `mode_assumed=true` 保留事实边界，不将暂按常规估算写成已确认的常规模式。
 - 状态接口的 `mode_backfill` 展示诊断补齐进度；模式变化会提升数据版本，失效相关统计与费用缓存。
 

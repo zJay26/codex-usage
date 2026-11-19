@@ -3,9 +3,10 @@ package model
 import "strings"
 
 const (
-	ModeStandard = "standard"
-	ModeFast     = "fast"
-	ModeUnknown  = "unknown"
+	ModeStandard  = "standard"
+	ModeFast      = "fast"
+	ModeUltrafast = "ultrafast"
+	ModeUnknown   = "unknown"
 )
 
 type ServiceMode struct {
@@ -20,6 +21,8 @@ func ModeFromTier(tier, source string) ServiceMode {
 	switch strings.ToLower(strings.TrimSpace(tier)) {
 	case "fast", "priority":
 		m.ServiceMode, m.ModeAssumed = ModeFast, false
+	case ModeUltrafast:
+		m.ServiceMode, m.ModeAssumed = ModeUltrafast, false
 	case "default":
 		m.ServiceMode, m.ModeAssumed = ModeStandard, false
 	}
@@ -27,7 +30,7 @@ func ModeFromTier(tier, source string) ServiceMode {
 }
 
 func (m ServiceMode) Normalized() ServiceMode {
-	if m.ServiceMode != ModeFast && m.ServiceMode != ModeStandard {
+	if m.ServiceMode != ModeFast && m.ServiceMode != ModeUltrafast && m.ServiceMode != ModeStandard {
 		m.ServiceMode = ModeUnknown
 	}
 	if m.ModeSource == "" {
@@ -37,16 +40,21 @@ func (m ServiceMode) Normalized() ServiceMode {
 	return m
 }
 
-// Unknown is a subset of Regular, never a third additive bucket.
+// Regular + Fast accounts for all usage. Unknown is a subset of Regular,
+// and Ultrafast is a subset of the accelerated (Fast) total.
 type ModeUsage struct {
-	Regular TokenUsage `json:"regular"`
-	Fast    TokenUsage `json:"fast"`
-	Unknown TokenUsage `json:"unknown"`
+	Regular   TokenUsage `json:"regular"`
+	Fast      TokenUsage `json:"fast"`
+	Ultrafast TokenUsage `json:"ultrafast"`
+	Unknown   TokenUsage `json:"unknown"`
 }
 
 func (m *ModeUsage) Add(usage TokenUsage, mode string) {
-	if mode == ModeFast {
+	if mode == ModeFast || mode == ModeUltrafast {
 		m.Fast = m.Fast.Add(usage)
+		if mode == ModeUltrafast {
+			m.Ultrafast = m.Ultrafast.Add(usage)
+		}
 		return
 	}
 	m.Regular = m.Regular.Add(usage)

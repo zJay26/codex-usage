@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	CatalogAsOf = "2026-10-07"
+	CatalogAsOf = "2026-11-19"
 	Currency    = "USD"
 	Basis       = "current_standard_api_text_token_prices"
 )
@@ -51,6 +51,20 @@ var builtInCatalog = []CatalogEntry{
 		Model: "codex-auto-review", DisplayName: "Codex Auto-review",
 		InputUSDPerMillion: "0.00", CachedInputUSDPerMillion: "0.00",
 		CacheWriteInputUSDPerMillion: "0.00", OutputUSDPerMillion: "0.00",
+	},
+	{
+		Model: "gpt-6.2-astra", DisplayName: "GPT-6.2 Astra",
+		SnapshotPatterns:   []string{"gpt-6.2-astra-YYYY-MM-DD"},
+		InputUSDPerMillion: "8.00", CachedInputUSDPerMillion: "0.40",
+		CacheWriteInputUSDPerMillion: "10.00", OutputUSDPerMillion: "40.00",
+		Source: "https://developers.openai.com/api/docs/models/gpt-6.2-astra",
+	},
+	{
+		Model: "gpt-6.2-sol", DisplayName: "GPT-6.2 Sol",
+		SnapshotPatterns:   []string{"gpt-6.2-sol-YYYY-MM-DD"},
+		InputUSDPerMillion: "2.00", CachedInputUSDPerMillion: "0.10",
+		CacheWriteInputUSDPerMillion: "2.50", OutputUSDPerMillion: "10.00",
+		Source: "https://developers.openai.com/api/docs/models/gpt-6.2-sol",
 	},
 	{
 		Model: "gpt-6.1-sol", DisplayName: "GPT-6.1 Sol",

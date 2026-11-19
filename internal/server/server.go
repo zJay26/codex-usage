@@ -651,7 +651,9 @@ func parseFilterIn(query url.Values, loc *time.Location) (model.Filter, error) {
 		}
 	}
 	filter.Mode = query.Get("mode")
-	if filter.Mode != "" && filter.Mode != "regular" && filter.Mode != "fast" && filter.Mode != "unknown" {
+	switch filter.Mode {
+	case "", "regular", "fast", "fast_only", "ultrafast", "unknown":
+	default:
 		return filter, fmt.Errorf("mode: 不支持的模式 %q", filter.Mode)
 	}
 	filter.CostBasis = query.Get("cost_basis")

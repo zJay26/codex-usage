@@ -89,9 +89,9 @@ That's it: the program runs in the background, your history is organized, and ne
 
 **codex-usage is a complete local usage dashboard built for people who use Codex every day.** Totals, trends, costs, models, projects, and tasks come together in one clear interface. Start with the big picture, then follow a date, hour, model, or task to understand what drove consumption. It is useful on a single computer, and per-machine accounting keeps each host's usage clear when you share an account across devices.
 
-Install once to index existing history and keep new usage up to date. **Go from “How much did I use today?” to “What did these 90 minutes, this project, or this task tree consume?” in the same interface.** Regular / Fast breakdowns, minute-precision ranges, Session search, combined filters, API-equivalent costs, and exports are all included. English and Chinese, light and dark themes, display settings, and a mobile layout make it comfortable to check every day.
+Install once to index existing history and keep new usage up to date. **Go from “How much did I use today?” to “What did these 90 minutes, this project, or this task tree consume?” in the same interface.** Regular, Fast and Ultrafast breakdowns, minute-precision ranges, Session search, combined filters, API-equivalent costs, and exports are all included. English and Chinese, light and dark themes, display settings, and a mobile layout make it comfortable to check every day.
 
-One binary runs on Windows, Linux / WSL, or macOS, with no database service or central server to deploy. Statistics stay on the current computer; prompts, replies, and tool output are never stored, and `auth.json` is never read. Costs are estimates using bundled public API prices and Fast credit multipliers, not actual bills or account quotas.
+One binary runs on Windows, Linux / WSL, or macOS, with no database service or central server to deploy. Statistics stay on the current computer; prompts, replies, and tool output are never stored, and `auth.json` is never read. Costs are estimates using bundled public API prices and speed multipliers for included usage, not actual bills or account quotas.
 
 ## A complete toolkit for everyday use
 
@@ -99,12 +99,12 @@ One binary runs on Windows, Linux / WSL, or macOS, with no database service or c
 |---|---|
 | Totals and costs at a glance | Total tokens, Input / Cached / Cache Write / Output / Reasoning composition, API-equivalent costs, and pricing coverage |
 | Custom time ranges | Today, 7 days, 30 days, all time, or any minute-precision interval; query across dates and see the unabridged total |
-| Regular / Fast breakdowns | Total and Fast usage across overview, trends, models, and tasks; filter to Fast and estimate cost using supported credit multipliers |
+| Service modes | Filter regular, Fast and Ultrafast separately to compare raw tokens and weighted cost |
 | Daily and hourly drill-down | Trends, calendars, zero-usage days, hourly distribution, and model composition in one accounting timezone, including repeated DST hours |
 | Multiple attribution views | Explore models, sources, projects, Threads, Sessions, and main tasks, Subagents, Guardians, or Memory |
 | Main tasks and subtasks | Collapse explicit parent/child links; compare own and subtree usage while costs remain own-only |
 | Search, filter, and export | Search task titles, Session IDs, projects, models, or sources; combine date, mode, and Agent filters, then export the current scope as JSON / CSV |
-| Configurable model pricing | Bundled prices for GPT-6 Astra / Sol / Luna and more, internal-model aliases, and local rate overrides; unpriced usage stays explicit |
+| Configurable model pricing | Published rates for GPT-6.2 Sol, GPT-6.2 Astra and earlier models, with local aliases, custom rates and explicit unpriced usage |
 | Comfortable interface | English / Chinese, light / dark themes, font and density settings, reduced motion, and mobile layouts; tokens and costs follow the same filters |
 | Per-machine accounting | View work and home computers, Windows / WSL / Linux / macOS hosts independently and locate each one's consumption |
 | Continuous indexing and checks | Scan history and new records; handle duplicates, fork replays, and compaction requests; preserve statistics and ask before a required rebuild |
@@ -117,10 +117,16 @@ One binary runs on Windows, Linux / WSL, or macOS, with no database service or c
 |---|---|
 | Tokens, models, sources, projects, Threads, Sessions, Agents, and calendar days on this machine | Usage from other machines on the account |
 | Existing and newly added local Codex session usage | Account quota, subscription balance, or real bills |
-| API-equivalent cost using Standard text rates and Fast credit multipliers, plus pricing coverage | Prompts, replies, reasoning content, tool output, or `auth.json` |
+| API-equivalent cost using Standard text rates and speed multipliers for included usage, plus pricing coverage | Prompts, replies, reasoning content, tool output, or `auth.json` |
 | Data-quality notices for duplicates, resets, malformed records, and rebuilds | Cloud sync, remote telemetry, or third-party analytics |
 
-> “Machine” means the host running Codex and codex-usage, not a remote target used by a shell or tool. Codex's official `/usage` shows account-level activity; codex-usage adds detailed attribution for the current computer.
+> “Machine” is the host running the Codex client and codex-usage. A remote shell session counts toward the client host that started the chat.
+
+### Using codex-usage alongside OpenAI analytics
+
+- **Check account limits and team usage.** The official dashboard shows balances and reset times. Eligible workspaces can also explore recent patterns by model, reasoning and speed, inspect high-usage chats and costs, or use Personal Analytics and Usage Insights. [Account usage](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan) · [Desktop usage and Personal Analytics](https://help.openai.com/en/articles/20001478) · [Workspace Usage Insights](https://learn.chatgpt.com/docs/enterprise/usage-insights)
+- **Trace a task on this machine.** Filter by project, time and agent, then expand the session tree to compare the parent’s own tokens with the total including its subtasks. OpenAI notes that some sub-agent and background work can fall outside the displayed main-chat total. Tree attribution depends on local relationship records. [OpenAI’s chat-level accounting guide](https://help.openai.com/en/articles/20001478)
+- **Audit a run.** Select a minute-precision interval anywhere in the indexed history and export the matching events as JSON or CSV. Inspect cache writes, reasoning tokens, fork replay deduplication and pricing gaps offline without workspace admin access. Dollar estimates use the current local catalog. OpenAI’s account records provide actual billed usage and cross-device balances.
 
 <details><summary>View current desktop and mobile screenshots (synthetic data)</summary>
 
@@ -191,14 +197,16 @@ Display settings in the header use a more comfortable type scale by default and 
 
 ### API-equivalent cost
 
-The Dashboard shows regular, Fast, and all tokens, with a mode filter. Raw Fast tokens are never multiplied. Fast cost uses Standard base rates multiplied by ChatGPT Codex credit factors: 2.5 for GPT-6.1 Sol, GPT-6 Astra/Sol/Luna, the GPT-5.6 family, and GPT-5.5; 2 for GPT-5.4. Models without a confirmed factor remain unpriced. History is classified only from explicit evidence for the same turn; unconfirmed usage is provisionally regular. See the [Fast accounting, backfill, and API guide (Chinese)](docs/fast-mode-accounting.md).
+The Dashboard filters regular, Fast and Ultrafast separately. Token counts come directly from the local ledger. For GPT-6.2 Sol and Astra, estimates use the included-subscription factors of 2× for Fast and 6× for Ultrafast. Classification requires evidence for the same turn. Unconfirmed usage is provisionally regular. [Mode accounting and API guide (Chinese)](docs/fast-mode-accounting.md) · [OpenAI speed multipliers](https://learn.chatgpt.com/docs/pricing)
 
 The estimator streams the normalized events that already passed source de-duplication and attribution filtering. It runs at query time, writes no cost data to SQLite, and leaves existing token totals unchanged. Arithmetic uses fixed-point nano-USD. Cached Input and Cache Write are removed from regular Input, and Reasoning is already included in Output, so neither is charged twice.
 
-The bundled Standard text price catalog was updated on **2026-10-07**. All values are USD / 1M tokens:
+The bundled Standard short-context text price catalog was updated on **2026-11-19**. All values are USD per million tokens.
 
 | Model | Input | Cached | Cache Write | Output |
 |---|---:|---:|---:|---:|
+| [GPT-6.2 Astra](https://developers.openai.com/api/docs/models/gpt-6.2-astra) | 8.00 | 0.40 | 10.00 | 40.00 |
+| [GPT-6.2 Sol](https://developers.openai.com/api/docs/models/gpt-6.2-sol) | 2.00 | 0.10 | 2.50 | 10.00 |
 | [GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra) | 10.00 | 1.00 | 12.50 | 50.00 |
 | [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol) | 2.00 | 0.10 | 2.50 | 10.00 |
 | [GPT-6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol) | 2.00 | 0.20 | 2.50 | 10.00 |
@@ -212,7 +220,7 @@ The bundled Standard text price catalog was updated on **2026-10-07**. All value
 | [GPT-5.3-Codex](https://developers.openai.com/api/docs/models/gpt-5.3-codex) | 1.75 | 0.175 | not published | 14.00 |
 | [GPT-5.2-Codex](https://developers.openai.com/api/docs/models/gpt-5.2-codex) | 1.75 | 0.175 | not published | 14.00 |
 
-GPT-6.1 Sol, GPT-6 Astra/Sol/Luna and GPT-5.6 Cache Write use the official 1.25× regular Input rule. Local JSONL stores cumulative token activity and cannot reliably reconstruct the per-request boundaries used for API billing. The estimator uses the Standard base rates above, adjusts explicitly identified Fast usage, and does not infer long-context multipliers. The UI always shows estimated cost together with token pricing coverage; unknown models are never treated as zero-cost.
+Both GPT-6.2 models use the 30-minute cache-write rate. The available counters do not establish the context bracket or cache retention of every request. Estimates use the base rates above and show pricing coverage and reasons for unpriced usage.
 
 Separate `codex-auto-review` usage defaults to zero cost while retaining token counts. This local accounting policy follows the Tibo statement reported by the maintainer; as of 2026-10-07, an explicit official public free-pricing statement has not been verified. It is not a published API price. Existing manual overrides still take precedence; remove that override to restore zero pricing. Only this exact model ID is covered: enabling Auto-review does not make main-model usage free. Historical estimates also use the current policy.
 

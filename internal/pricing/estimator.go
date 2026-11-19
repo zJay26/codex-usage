@@ -20,6 +20,7 @@ type UnpricedReason struct {
 type Estimate struct {
 	RegularModeUSD     string           `json:"regular_mode_usd"`
 	FastModeUSD        string           `json:"fast_mode_usd"`
+	UltrafastModeUSD   string           `json:"ultrafast_mode_usd"`
 	StandardBaseUSD    string           `json:"standard_base_usd"`
 	FastSurchargeUSD   string           `json:"fast_surcharge_usd"`
 	USD                string           `json:"usd"`
@@ -72,6 +73,7 @@ type Builder struct {
 type aggregate struct {
 	modes                                                  model.ModeUsage
 	regularModeNano, fastModeNano, baseNano, surchargeNano int64
+	ultrafastModeNano                                      int64
 	usage                                                  model.TokenUsage
 	regularNano                                            int64
 	cachedNano                                             int64
@@ -384,8 +386,13 @@ func (a *aggregate) add(event evaluatedEvent) error {
 	}
 	a.modes.Add(event.usage, event.mode)
 	modeAmount := &a.regularModeNano
-	if event.mode == model.ModeFast {
+	if event.mode == model.ModeFast || event.mode == model.ModeUltrafast {
 		modeAmount = &a.fastModeNano
+	}
+	if event.mode == model.ModeUltrafast {
+		if a.ultrafastModeNano, err = checkedAdd(a.ultrafastModeNano, eventNano); err != nil {
+			return err
+		}
 	}
 	if *modeAmount, err = checkedAdd(*modeAmount, eventNano); err != nil {
 		return err
@@ -444,7 +451,8 @@ func (a aggregate) estimate() Estimate {
 		return reasons[i].Tokens > reasons[j].Tokens
 	})
 	return Estimate{
-		RegularModeUSD: formatNanoUSD(a.regularModeNano), FastModeUSD: formatNanoUSD(a.fastModeNano), StandardBaseUSD: formatNanoUSD(a.baseNano), FastSurchargeUSD: formatNanoUSD(a.surchargeNano),
+		RegularModeUSD: formatNanoUSD(a.regularModeNano), FastModeUSD: formatNanoUSD(a.fastModeNano), UltrafastModeUSD: formatNanoUSD(a.ultrafastModeNano),
+		StandardBaseUSD: formatNanoUSD(a.baseNano), FastSurchargeUSD: formatNanoUSD(a.surchargeNano),
 		USD: formatNanoUSD(a.totalNano), RegularInputUSD: formatNanoUSD(a.regularNano),
 		CachedInputUSD: formatNanoUSD(a.cachedNano), CacheWriteInputUSD: formatNanoUSD(a.cacheWriteNano),
 		OutputUSD: formatNanoUSD(a.outputNano), PricedTokens: a.pricedTokens,

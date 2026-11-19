@@ -163,6 +163,8 @@ test("synthetic catalog supports GPT-6 aliases and Fast estimates", async ({ pag
   const card = page.locator('[data-pricing-model="internal-review"]');
   await card.locator("[data-rate-mode]").selectOption("alias");
   for (const item of [
+    { model: "gpt-6.2-astra", display: "GPT-6.2 Astra", rates: ["8.00", "0.40", "10.00", "40.00"], factor: 2 },
+    { model: "gpt-6.2-sol", display: "GPT-6.2 Sol", rates: ["2.00", "0.10", "2.50", "10.00"], factor: 2 },
     { model: "gpt-6.1-sol", display: "GPT-6.1 Sol", rates: ["2.00", "0.10", "2.50", "10.00"] },
     { model: "gpt-6-sol", display: "GPT-6 Sol", rates: ["2.00", "0.20", "2.50", "10.00"] },
     { model: "gpt-6-luna", display: "GPT-6 Luna", rates: ["0.10", "0.01", "0.125", "0.50"] }
@@ -178,9 +180,27 @@ test("synthetic catalog supports GPT-6 aliases and Fast estimates", async ({ pag
       return { base: base.summary, fast: fast.summary };
     }, item.model);
     expect(Number(result.base.usd)).toBeGreaterThan(0);
-    expect(Number(result.fast.usd)).toBeCloseTo(Number(result.base.usd) * 2.5, 7);
+    expect(Number(result.fast.usd)).toBeCloseTo(Number(result.base.usd) * (item.factor || 2.5), 7);
     expect(result.fast.coverage_ratio).toBe(1);
     expect(result.fast.unpriced_tokens).toBe(0);
+  }
+});
+
+test("synthetic GPT-6.2 Ultrafast filters, prices and exports share the same tier", async ({ page }) => {
+  await page.goto(`${baseURL}?lang=en`, { waitUntil: "networkidle" });
+  for (const model of ["gpt-6.2-sol", "gpt-6.2-astra"]) {
+    const { summary, base, weighted, rows } = await page.evaluate(async (model) => {
+      const query = `model=${model}&mode=ultrafast`;
+      const get = async (path) => (await fetch(`api/v1/${path}`)).json();
+      return {summary: await get(`summary?${query}`), base: await get(`cost-estimate?${query}`),
+        weighted: await get(`cost-estimate?${query}&cost_basis=codex_fast_weighted`), rows: await get(`export?${query}`)};
+    }, model);
+    expect(summary.grand_total).toBeGreaterThan(0);
+    expect(summary.modes.ultrafast.total).toBe(summary.grand_total);
+    expect(Number(weighted.summary.usd)).toBeCloseTo(Number(base.summary.usd) * 6, 7);
+    expect(weighted.summary.ultrafast_mode_usd).toBe(weighted.summary.usd);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((row) => row.service_tier === "ultrafast" && row.model === model)).toBe(true);
   }
 });
 

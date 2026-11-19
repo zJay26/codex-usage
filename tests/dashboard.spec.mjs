@@ -851,9 +851,11 @@ test("custom minute range queries real event totals, validates bounds, and uses 
   } finally { await context.close(); }
 });
 
-test("GPT-6.1 Sol and Auto-review pricing agree across the catalog, summary and sessions", async ({ page }, testInfo) => {
+test("GPT-6 and Auto-review pricing agree across the catalog, summary, sessions and exports", async ({ page }, testInfo) => {
   const cases = [
     { model: "codex-auto-review", recorded: "codex-auto-review", display: "Codex Auto-review", rates: ["0.00", "0.00", "0.00", "0.00"], standard: "0.000000000", fast: "0.000000000" },
+    { model: "gpt-6.2-sol", recorded: "gpt-6.2-sol", display: "GPT-6.2 Sol", rates: ["2.00", "0.10", "2.50", "10.00"], standard: "0.002670000", fast: "0.005340000" },
+    { model: "gpt-6.2-astra", recorded: "gpt-6.2-astra-2026-11-17", display: "GPT-6.2 Astra", rates: ["8.00", "0.40", "10.00", "40.00"], standard: "0.010680000", fast: "0.064080000", tier: "ultrafast" },
     { model: "gpt-6.1-sol", recorded: "gpt-6.1-sol-2026-09-29", display: "GPT-6.1 Sol", rates: ["2.00", "0.10", "2.50", "10.00"], standard: "0.002670000", fast: "0.006675000" },
     { model: "gpt-6-sol", recorded: "gpt-6-sol", display: "GPT-6 Sol", rates: ["2.00", "0.20", "2.50", "10.00"], standard: "0.002690000", fast: "0.006725000" },
     { model: "gpt-6-luna", recorded: "gpt-6-luna-2026-09-22", display: "GPT-6 Luna", rates: ["0.10", "0.01", "0.125", "0.50"], standard: "0.000134500", fast: "0.000336250" }
@@ -864,7 +866,7 @@ test("GPT-6.1 Sol and Auto-review pricing agree across the catalog, summary and 
     const id = `e2e-${item.model}`;
     const fixture = [
       { timestamp, type: "session_meta", payload: { id, cwd: "synthetic://gpt6-pricing", originator: "codex_desktop" } },
-      { timestamp, type: "turn_context", payload: { turn_id: id, model: item.recorded, service_tier: "fast" } },
+      { timestamp, type: "turn_context", payload: { turn_id: id, model: item.recorded, service_tier: item.tier || "fast" } },
       { timestamp, type: "token_usage_record", payload: { thread_id: id, session_id: id, turn_id: id, response_id: `${id}-response`, usage, turn_token_usage: usage } }
     ];
     await writeFile(path.join(codexHomeDir, "sessions", `${id}.jsonl`), `${fixture.map((row) => JSON.stringify(row)).join("\n")}\n`);
@@ -882,10 +884,16 @@ test("GPT-6.1 Sol and Auto-review pricing agree across the catalog, summary and 
     const summary = await get(`summary?model=${item.recorded}`);
     expect(summary.grand_total).toBe(1100);
     expect(summary.modes.fast.total).toBe(1100);
+    expect(summary.modes.ultrafast.total).toBe(item.tier === "ultrafast" ? 1100 : 0);
+    const exactMode = item.tier || "fast_only";
+    const events = await get(`export?model=${item.recorded}&mode=${exactMode}`);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({model: item.recorded, service_mode: item.tier || "fast", mode_assumed: false, usage: {total: 1100}});
     const standard = await get(`cost-estimate?model=${item.recorded}`);
     const fast = await get(`cost-estimate?model=${item.recorded}&cost_basis=codex_fast_weighted`);
     expect(standard.summary.usd).toBe(item.standard);
     expect(fast.summary.usd).toBe(item.fast);
+    expect(fast.summary.ultrafast_mode_usd).toBe(item.tier === "ultrafast" ? item.fast : "0.000000000");
     expect(fast.summary.standard_base_usd).toBe(item.standard);
     expect(fast.summary.coverage_ratio).toBe(1);
     expect(fast.summary.unpriced_tokens).toBe(0);
@@ -895,6 +903,11 @@ test("GPT-6.1 Sol and Auto-review pricing agree across the catalog, summary and 
   }
 
   await page.goto(dashboardURL, { waitUntil: "networkidle" });
+  await page.locator("#filterButton").click();
+  await page.locator("#filterMode").selectOption("ultrafast");
+  await page.locator("#applyFilters").click();
+  await expect(page.locator("#overviewTokenModes")).toContainText("Ultrafast");
+  await expect(page.locator("#overviewExactTotal")).toContainText("1,100");
   await page.locator("#pricingButton").click();
   await page.locator(".catalog-disclosure summary").click();
   await page.locator("#newOverrideModel").fill("e2e-gpt6-alias");
